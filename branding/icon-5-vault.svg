@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- The Vault — elliptical dome open at top, inspired by 사유의 방 -->
+  <rect width="64" height="64" rx="12" fill="#1A1714"/>
+  <path d="M 18 24 A 22 18 0 1 0 46 24" fill="none" stroke="#C4A46E" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

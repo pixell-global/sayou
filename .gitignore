@@ -39,3 +39,12 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Example data (persistent SQLite + storage blobs)
+examples/.data/
+
+# Internal docs (not for public repo)
+MVP.md
+
+# Branding preview pages (internal design tools)
+branding/*.html

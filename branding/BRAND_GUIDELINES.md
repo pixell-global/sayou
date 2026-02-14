@@ -380,6 +380,52 @@ Directly inspired by the spatial experience of the 사유의 방.
 
 ## Logo Usage
 
+### Symbol — The Vault
+
+The sayou symbol is derived from the architecture of 사유의 방 (Room of Quiet Contemplation) at the National Museum of Korea. It represents the golden dome edge viewed from below — an elliptical arc, open at the top.
+
+**Origin:** The room's curved ceiling creates a warm golden arc that defines the contemplative space. The open top represents openness — containment without closure, open source, accessible.
+
+**Shape:** An elliptical arc (wider than tall), approximately 270° of an ellipse, open at the top center. The proportions are horizontal-dominant, matching the room's shallow dome rather than a perfect circle.
+
+**Construction:**
+
+```
+SVG path: M 18 24 A 22 18 0 1 0 46 24
+Viewbox: 0 0 64 64
+Stroke: 2.5px, round linecap
+```
+
+**Files:**
+- `branding/icon-5-vault.svg` — Symbol on dark background (with rounded rect)
+- `branding/sayou-mark.svg` — Standalone symbol (uses `currentColor`)
+- `branding/favicon.svg` — Optimized for 16–32px display
+
+**Color usage:**
+
+| Context | Stroke Color |
+|---------|-------------|
+| Dark background | `#C4A46E` (sayou gold) |
+| Light background | `#3D3832` (text-primary light) |
+| Brand accent on dark | `#C4A46E` (sayou gold) |
+
+**Spacing:**
+- Minimum clear space: 1x the width of the arc's stroke
+- When paired with the wordmark, use `--space-4` (16px) gap between mark and text
+
+**Restrictions:**
+- Never fill the arc — it is always a stroke
+- Never close the gap at the top
+- Never rotate or flip the symbol
+- Never use a perfect circle — the elliptical proportion is intentional
+- Never add effects (shadow, glow, gradient)
+
+### Favicon
+
+The favicon uses the Vault symbol on the dark background (`#1A1714`) with rounded corners. Optimized for 32px with a 2px stroke weight.
+
+File: `branding/favicon.svg`
+
 ### Wordmark
 
 The sayou wordmark is set in **Cormorant Garamond Light** (300 weight), lowercase.
@@ -395,6 +441,19 @@ sayou  사유
 ```
 
 The Korean text uses **Noto Serif KR Light** at a matched optical size.
+
+### Combined Mark + Wordmark
+
+The preferred logo is the Vault symbol paired with the wordmark:
+
+```
+⌒ sayou
+```
+
+- Symbol and text are vertically centered
+- Gap: `--space-4` (16px) between mark and text
+- Symbol size: approximately 75% of the wordmark's cap height
+- The symbol always appears to the left of the text
 
 ### Spacing
 

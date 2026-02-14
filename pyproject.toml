@@ -27,6 +27,9 @@ dev = [
     "moto[s3]>=5.0.0",
     "ruff>=0.4.0",
 ]
+examples = [
+    "openai>=1.0.0",
+]
 
 [project.scripts]
 sayou = "sayou.__main__:main"
