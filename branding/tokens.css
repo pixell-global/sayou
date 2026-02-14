@@ -1,0 +1,173 @@
+/*
+ * sayou Design Tokens
+ * 사유 (思惟) — Deep contemplation
+ *
+ * Inspired by the 사유의 방 at the National Museum of Korea.
+ * See BRAND_GUIDELINES.md for philosophy and usage.
+ */
+
+:root {
+  /* ===== BRAND COLORS ===== */
+  --sayou-gold: #C4A46E;           /* Aged gilt-bronze patina */
+  --sayou-gold-light: #D4B97E;     /* Hover / highlight */
+  --sayou-gold-dark: #A68B55;      /* Active / pressed */
+  --sayou-bisaek: #8FB5A3;         /* Muted celadon (비색) */
+  --sayou-hwangto: #B08968;        /* Korean earth (황토) */
+  --sayou-hanji: #E8DFD0;          /* Korean paper (한지) */
+
+  /* ===== TYPOGRAPHY ===== */
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-display-kr: 'Noto Serif KR', serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-body-kr: 'Pretendard', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+
+  /* Type Scale */
+  --text-display: 48px;
+  --text-h1: 36px;
+  --text-h2: 28px;
+  --text-h3: 22px;
+  --text-h4: 18px;
+  --text-body: 16px;
+  --text-body-sm: 14px;
+  --text-caption: 12px;
+  --text-code: 14px;
+
+  /* Line Heights */
+  --leading-display: 56px;
+  --leading-h1: 44px;
+  --leading-h2: 36px;
+  --leading-h3: 30px;
+  --leading-h4: 26px;
+  --leading-body: 26px;
+  --leading-body-sm: 22px;
+  --leading-caption: 18px;
+  --leading-code: 22px;
+
+  /* Font Weights */
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+
+  /* ===== SPACING ===== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  /* ===== BORDER RADIUS ===== */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 50%;
+
+  /* ===== TRANSITIONS ===== */
+  --duration-fast: 200ms;
+  --duration-normal: 300ms;
+  --duration-slow: 500ms;
+  --easing-default: cubic-bezier(0.16, 1, 0.3, 1);  /* ease-out, natural deceleration */
+  --easing-gentle: cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+/* ===== DARK MODE (default) ===== */
+[data-theme="dark"],
+:root {
+  /* Backgrounds — the dark corridor */
+  --bg-app: #0C0B0A;
+  --bg-primary: #141310;
+  --bg-secondary: #1A1916;
+  --bg-surface: #21201C;
+  --bg-elevated: #2A2823;
+  --bg-hover: #33312B;
+  --bg-active: #3D3A33;
+  --bg-overlay: rgba(12, 11, 10, 0.8);
+
+  /* Text — warm off-whites */
+  --text-primary: #E8E3D8;
+  --text-secondary: #B0AA9D;
+  --text-tertiary: #8A8579;
+  --text-muted: #625E53;
+
+  /* Borders */
+  --border-default: #2A2823;
+  --border-subtle: #21201C;
+
+  /* Semantic */
+  --color-success: #5DAD7B;
+  --color-success-bg: #1A2E22;
+  --color-warning: #D4A248;
+  --color-warning-bg: #2E2515;
+  --color-error: #D4645C;
+  --color-error-bg: #2E1A18;
+  --color-info: #6BA3BE;
+  --color-info-bg: #172A33;
+
+  /* Gray scale */
+  --gray-950: #0C0B0A;
+  --gray-900: #141310;
+  --gray-850: #1A1916;
+  --gray-800: #21201C;
+  --gray-750: #2A2823;
+  --gray-700: #33312B;
+  --gray-600: #49463D;
+  --gray-500: #625E53;
+  --gray-400: #8A8579;
+  --gray-300: #B0AA9D;
+  --gray-200: #D1CBBD;
+  --gray-100: #E8E3D8;
+  --gray-50: #F5F2EB;
+}
+
+/* ===== LIGHT MODE ===== */
+[data-theme="light"] {
+  /* Backgrounds — hanji warmth */
+  --bg-app: #FAF8F4;
+  --bg-primary: #F2EEE7;
+  --bg-secondary: #E8E3D8;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-hover: #F2EEE7;
+  --bg-active: #E8E3D8;
+  --bg-overlay: rgba(26, 23, 19, 0.4);
+
+  /* Text — warm darks */
+  --text-primary: #3D3832;
+  --text-secondary: #5C564C;
+  --text-tertiary: #7D766A;
+  --text-muted: #A49C8C;
+
+  /* Borders */
+  --border-default: #D1CBBD;
+  --border-subtle: #DDD7CA;
+
+  /* Semantic */
+  --color-success: #2E7D4F;
+  --color-success-bg: #E8F5EC;
+  --color-warning: #A67A1A;
+  --color-warning-bg: #FEF5E0;
+  --color-error: #C4382E;
+  --color-error-bg: #FDE8E6;
+  --color-info: #337EA9;
+  --color-info-bg: #E7F3F8;
+
+  /* Gray scale */
+  --gray-50: #FAF8F4;
+  --gray-100: #F2EEE7;
+  --gray-150: #E8E3D8;
+  --gray-200: #DDD7CA;
+  --gray-250: #D1CBBD;
+  --gray-300: #C4BCAC;
+  --gray-400: #A49C8C;
+  --gray-500: #7D766A;
+  --gray-600: #5C564C;
+  --gray-700: #3D3832;
+  --gray-800: #2A2621;
+  --gray-900: #1A1713;
+}

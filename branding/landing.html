@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sayou — Where agents think</title>
+  <meta name="description" content="A file-system inspired context store for AI agents. Built to replace the databases of the web era. Open source. File-first. SQL-compatible.">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,400&family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@400;500&family=Noto+Serif+KR:wght@300&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="tokens.css">
+
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: var(--font-body);
+      font-size: var(--text-body);
+      line-height: var(--leading-body);
+      font-weight: var(--weight-regular);
+      color: var(--text-secondary);
+      background-color: var(--bg-app);
+      overflow-x: hidden;
+    }
+
+    a {
+      color: var(--sayou-gold);
+      text-decoration: none;
+      transition: color var(--duration-fast) var(--easing-default);
+    }
+
+    a:hover {
+      color: var(--sayou-gold-light);
+    }
+
+    /* ===== THEME TOGGLE ===== */
+    .theme-toggle {
+      position: fixed;
+      top: var(--space-6);
+      right: var(--space-6);
+      z-index: 100;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-2) var(--space-3);
+      color: var(--text-tertiary);
+      font-family: var(--font-body);
+      font-size: var(--text-caption);
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--easing-default);
+      letter-spacing: 0.04em;
+    }
+
+    .theme-toggle:hover {
+      border-color: var(--sayou-gold);
+      color: var(--text-secondary);
+    }
+
+    /* ===== LAYOUT ===== */
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 var(--space-6);
+    }
+
+    section {
+      padding: var(--space-32) 0;
+    }
+
+    .section-alt {
+      background-color: var(--bg-primary);
+    }
+
+    .section-label {
+      font-family: var(--font-body);
+      font-size: var(--text-caption);
+      font-weight: var(--weight-medium);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--sayou-gold);
+      margin-bottom: var(--space-4);
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: var(--text-h1);
+      line-height: var(--leading-h1);
+      font-weight: var(--weight-regular);
+      color: var(--text-primary);
+      letter-spacing: 0.02em;
+      margin-bottom: var(--space-12);
+    }
+
+    /* ===== HERO ===== */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 180px var(--space-6) 160px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Warm ambient glow — inspired by 사유의 방 */
+    .hero::before {
+      content: '';
+      position: absolute;
+      bottom: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 120%;
+      height: 70%;
+      background: radial-gradient(
+        ellipse 80% 50% at 50% 100%,
+        rgba(196, 164, 110, 0.08) 0%,
+        rgba(196, 164, 110, 0.04) 30%,
+        rgba(176, 137, 104, 0.02) 50%,
+        transparent 70%
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Vignette — darkened edges to draw focus inward */
+    .hero::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        ellipse 70% 60% at 50% 45%,
+        transparent 0%,
+        transparent 40%,
+        rgba(12, 11, 10, 0.4) 100%
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-brand {
+      font-family: var(--font-display);
+      font-size: 96px;
+      font-weight: var(--weight-light);
+      color: var(--text-primary);
+      letter-spacing: 0.03em;
+      line-height: 1;
+      margin-bottom: var(--space-2);
+    }
+
+    .hero-brand-kr {
+      font-family: var(--font-display-kr);
+      font-size: 36px;
+      font-weight: var(--weight-light);
+      color: var(--text-tertiary);
+      margin-bottom: var(--space-4);
+    }
+
+    .hero-meaning {
+      font-family: var(--font-body);
+      font-size: var(--text-body-sm);
+      font-style: italic;
+      color: var(--text-tertiary);
+      margin-bottom: var(--space-12);
+      letter-spacing: 0.02em;
+    }
+
+    .hero-headline {
+      font-family: var(--font-display);
+      font-size: var(--text-display);
+      line-height: var(--leading-display);
+      font-weight: var(--weight-regular);
+      color: var(--text-primary);
+      letter-spacing: 0.02em;
+      margin-bottom: var(--space-6);
+    }
+
+    .hero-sub {
+      font-family: var(--font-body);
+      font-size: var(--text-h4);
+      line-height: 30px;
+      color: var(--text-secondary);
+      max-width: 560px;
+      margin-bottom: var(--space-8);
+    }
+
+    .hero-code {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6) var(--space-8);
+      margin-bottom: var(--space-8);
+      text-align: left;
+      max-width: 480px;
+      width: 100%;
+    }
+
+    .hero-code pre {
+      font-family: var(--font-mono);
+      font-size: var(--text-code);
+      line-height: var(--leading-code);
+      color: var(--text-secondary);
+    }
+
+    .hero-descriptors {
+      font-family: var(--font-body);
+      font-size: var(--text-body-sm);
+      font-weight: var(--weight-medium);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--sayou-gold);
+      margin-bottom: var(--space-12);
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: var(--space-4);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-family: var(--font-body);
+      font-size: var(--text-body-sm);
+      font-weight: var(--weight-medium);
+      padding: var(--space-3) var(--space-6);
+      border-radius: var(--radius-md);
+      transition: all var(--duration-normal) var(--easing-default);
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background: var(--sayou-gold);
+      color: var(--bg-app);
+    }
+
+    .btn-primary:hover {
+      background: var(--sayou-gold-light);
+      color: var(--bg-app);
+    }
+
+    .btn-secondary {
+      border-color: var(--text-muted);
+      color: var(--text-secondary);
+      background: transparent;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--text-tertiary);
+      color: var(--text-primary);
+    }
+
+    .scroll-indicator {
+      position: absolute;
+      bottom: var(--space-8);
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .scroll-line {
+      width: 1px;
+      height: 48px;
+      background: var(--text-muted);
+      animation: breathe 3s var(--easing-gentle) infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: 0.2; transform: scaleY(0.6); }
+      50% { opacity: 0.6; transform: scaleY(1); }
+    }
+
+    /* ===== VISION ===== */
+    .vision-grid {
+      display: grid;
+      grid-template-columns: 1fr 1px 1fr;
+      gap: var(--space-12);
+    }
+
+    .vision-divider {
+      background: var(--border-default);
+    }
+
+    .vision-col p {
+      margin-bottom: var(--space-4);
+    }
+
+    .vision-col p:first-child {
+      font-family: var(--font-display);
+      font-size: var(--text-h3);
+      line-height: var(--leading-h3);
+      font-weight: var(--weight-regular);
+      color: var(--text-primary);
+      letter-spacing: 0.02em;
+      margin-bottom: var(--space-6);
+    }
+
+    .vision-conclusion {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding-top: var(--space-12);
+    }
+
+    .vision-conclusion p {
+      font-family: var(--font-display);
+      font-size: var(--text-h2);
+      line-height: var(--leading-h2);
+      font-style: italic;
+      color: var(--sayou-gold);
+      letter-spacing: 0.02em;
+    }
+
+    /* ===== PRINCIPLES ===== */
+    .principles-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-6);
+    }
+
+    .principle-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8) var(--space-8) var(--space-12);
+      transition: all var(--duration-normal) var(--easing-default);
+    }
+
+    .principle-card:hover {
+      border-color: var(--sayou-gold-dark);
+      background: var(--bg-elevated);
+    }
+
+    .principle-card h3 {
+      font-family: var(--font-display);
+      font-size: var(--text-h3);
+      line-height: var(--leading-h3);
+      font-weight: var(--weight-regular);
+      color: var(--text-primary);
+      letter-spacing: 0.02em;
+      margin-bottom: var(--space-4);
+    }
+
+    .principle-card p {
+      font-size: var(--text-body-sm);
+      line-height: var(--leading-body-sm);
+      color: var(--text-secondary);
+    }
+
+    /* ===== FILE COMPARISON ===== */
+    .file-grid {
+      display: grid;
+      grid-template-columns: 55fr 45fr;
+      gap: var(--space-12);
+      align-items: start;
+    }
+
+    .file-block {
+      background: var(--bg-app);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .file-block-header {
+      font-family: var(--font-mono);
+      font-size: var(--text-caption);
+      color: var(--text-tertiary);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border-default);
+      background: var(--bg-surface);
+    }
+
+    .file-block pre {
+      font-family: var(--font-mono);
+      font-size: var(--text-code);
+      line-height: var(--leading-code);
+      padding: var(--space-6);
+      overflow-x: auto;
+      color: var(--text-secondary);
+    }
+
+    .fm-key { color: var(--sayou-gold); }
+    .fm-val { color: var(--sayou-bisaek); }
+    .fm-delim { color: var(--text-muted); }
+    .fm-heading { color: var(--text-primary); }
+
+    .file-explanation p {
+      margin-bottom: var(--space-4);
+    }
+
+    .file-explanation ul {
+      list-style: none;
+      margin-bottom: var(--space-6);
+    }
+
+    .file-explanation li {
+      padding: var(--space-2) 0;
+      padding-left: var(--space-6);
+      position: relative;
+    }
+
+    .file-explanation li::before {
+      content: "\2014";
+      position: absolute;
+      left: 0;
+      color: var(--text-muted);
+    }
+
+    .file-explanation strong {
+      color: var(--text-primary);
+      font-weight: var(--weight-medium);
+    }
+
+    .file-standalone {
+      font-size: var(--text-h4);
+      line-height: var(--leading-h4);
+      color: var(--text-primary);
+      margin-top: var(--space-4);
+    }
+
+    .file-standalone-sub {
+      color: var(--text-secondary);
+      font-size: var(--text-body);
+    }
+
+    /* ===== CODE / IN PRACTICE ===== */
+    .code-sequence {
+      max-width: 720px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-8);
+    }
+
+    .code-step-label {
+      font-family: var(--font-body);
+      font-size: var(--text-body-sm);
+      font-weight: var(--weight-medium);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-tertiary);
+      margin-bottom: var(--space-3);
+    }
+
+    .code-block {
+      background: var(--bg-app);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      overflow-x: auto;
+    }
+
+    .code-block pre {
+      font-family: var(--font-mono);
+      font-size: var(--text-code);
+      line-height: var(--leading-code);
+      color: var(--text-secondary);
+    }
+
+    .code-comment { color: var(--text-tertiary); }
+    .code-fn { color: var(--sayou-bisaek); }
+    .code-str { color: var(--color-success); }
+    .code-key { color: var(--sayou-gold); }
+    .code-var { color: var(--text-primary); }
+
+    .code-conclusion {
+      text-align: center;
+      padding-top: var(--space-6);
+    }
+
+    .code-conclusion p {
+      font-family: var(--font-display);
+      font-size: var(--text-h4);
+      line-height: var(--leading-h4);
+      font-style: italic;
+      color: var(--text-secondary);
+    }
+
+    /* ===== ARCHITECTURE ===== */
+    .arch-diagram {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-6);
+      margin-bottom: var(--space-12);
+    }
+
+    .arch-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-6);
+    }
+
+    .arch-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-4) var(--space-6);
+      text-align: center;
+      min-width: 180px;
+    }
+
+    .arch-box-accent {
+      border-color: var(--sayou-gold);
+    }
+
+    .arch-box-title {
+      font-family: var(--font-body);
+      font-size: var(--text-body-sm);
+      font-weight: var(--weight-medium);
+      color: var(--text-primary);
+      margin-bottom: var(--space-1);
+    }
+
+    .arch-box-sub {
+      font-family: var(--font-mono);
+      font-size: var(--text-caption);
+      color: var(--text-tertiary);
+    }
+
+    .arch-arrow {
+      color: var(--text-tertiary);
+      font-size: 20px;
+    }
+
+    .arch-arrow-down {
+      color: var(--text-tertiary);
+      font-size: 20px;
+    }
+
+    .positioning-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+
+    .positioning-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+    }
+
+    .positioning-card strong {
+      color: var(--text-primary);
+      font-weight: var(--weight-medium);
+    }
+
+    .positioning-card p {
+      font-size: var(--text-body-sm);
+      line-height: var(--leading-body-sm);
+      color: var(--text-secondary);
+    }
+
+    /* ===== OPEN SOURCE ===== */
+    .opensource-text {
+      max-width: 640px;
+      margin-bottom: var(--space-12);
+    }
+
+    .opensource-text .highlight {
+      color: var(--sayou-gold);
+    }
+
+    .install-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      max-width: 600px;
+      margin-bottom: var(--space-8);
+    }
+
+    .install-card .code-block {
+      margin-bottom: var(--space-4);
+    }
+
+    .install-card .code-block:last-child {
+      margin-bottom: 0;
+    }
+
+    .opensource-ctas {
+      display: flex;
+      gap: var(--space-4);
+    }
+
+    /* ===== FOOTER ===== */
+    footer {
+      padding: var(--space-16) 0;
+      text-align: center;
+      border-top: 1px solid var(--border-default);
+    }
+
+    .footer-brand {
+      font-family: var(--font-display);
+      font-size: var(--text-h2);
+      font-weight: var(--weight-light);
+      color: var(--text-muted);
+      letter-spacing: 0.03em;
+      margin-bottom: var(--space-2);
+    }
+
+    .footer-brand-kr {
+      font-family: var(--font-display-kr);
+      font-size: var(--text-h4);
+      font-weight: var(--weight-light);
+      color: var(--text-muted);
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: var(--space-8);
+      margin: var(--space-6) 0;
+    }
+
+    .footer-links a {
+      font-size: var(--text-body-sm);
+      color: var(--text-tertiary);
+    }
+
+    .footer-links a:hover {
+      color: var(--text-primary);
+    }
+
+    .footer-attribution {
+      font-size: var(--text-caption);
+      color: var(--text-muted);
+      margin-bottom: var(--space-1);
+    }
+
+    .footer-license {
+      font-size: var(--text-caption);
+      color: var(--text-muted);
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+      section {
+        padding: var(--space-24) 0;
+      }
+
+      .hero-brand {
+        font-size: 56px;
+      }
+
+      .hero-brand-kr {
+        font-size: 24px;
+      }
+
+      .hero-meaning {
+        font-size: var(--text-caption);
+      }
+
+      .hero-headline {
+        font-size: var(--text-h1);
+        line-height: var(--leading-h1);
+      }
+
+      .hero-sub {
+        font-size: var(--text-body);
+      }
+
+      .hero-code {
+        padding: var(--space-4) var(--space-5);
+      }
+
+      .hero-code pre {
+        font-size: 12px;
+      }
+
+      .hero-ctas {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .section-title {
+        font-size: var(--text-h2);
+        line-height: var(--leading-h2);
+      }
+
+      .vision-grid {
+        grid-template-columns: 1fr;
+        gap: var(--space-8);
+      }
+
+      .vision-divider {
+        display: none;
+      }
+
+      .principles-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .file-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .positioning-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .arch-row {
+        flex-direction: column;
+      }
+
+      .arch-arrow {
+        transform: rotate(90deg);
+      }
+
+      .footer-links {
+        flex-direction: column;
+        gap: var(--space-4);
+      }
+
+      .opensource-ctas {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Theme Toggle -->
+  <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+    <span class="theme-icon">light</span>
+  </button>
+
+  <!-- Section 1: Hero -->
+  <section class="hero">
+    <div class="hero-brand">sayou</div>
+    <div class="hero-brand-kr">사유</div>
+    <div class="hero-meaning">사유 [sayu] — to contemplate deeply and reason broadly.</div>
+
+    <h1 class="hero-headline">A file-system inspired context store for AI agents.</h1>
+
+    <p class="hero-sub">
+      Built to replace the databases of the web era.
+    </p>
+
+    <div class="hero-code">
+      <pre><span class="code-key">from</span> <span class="code-var">sayou</span> <span class="code-key">import</span> <span class="code-var">Workspace</span>
+
+<span class="code-key">async with</span> <span class="code-fn">Workspace</span>() <span class="code-key">as</span> <span class="code-var">ws</span>:
+    <span class="code-key">await</span> <span class="code-var">ws</span>.<span class="code-fn">write</span>(<span class="code-str">"notes.md"</span>, <span class="code-str">"# Hello"</span>)
+    <span class="code-var">data</span> = <span class="code-key">await</span> <span class="code-var">ws</span>.<span class="code-fn">read</span>(<span class="code-str">"notes.md"</span>)</pre>
+    </div>
+
+    <div class="hero-descriptors">Open source. File-first. SQL-compatible.</div>
+
+    <div class="hero-ctas">
+      <a href="#" class="btn btn-primary">GitHub</a>
+      <a href="#" class="btn btn-secondary">Read the docs</a>
+    </div>
+
+    <div class="scroll-indicator">
+      <div class="scroll-line"></div>
+    </div>
+  </section>
+
+  <!-- Section 2: The Vision -->
+  <section class="section-alt">
+    <div class="container">
+      <div class="section-label">The Problem</div>
+      <h2 class="section-title">The web era built tools for transactions. Not for thinking.</h2>
+
+      <div class="vision-grid">
+        <div class="vision-col">
+          <p>Databases were designed for CRUD.</p>
+          <p>
+            Create, read, update, delete. Every record is a row, every relationship
+            a join, every nuance stripped to fit a schema. A CRM stores a name and
+            a dollar amount &mdash; not the reasoning behind the deal. Structure
+            without context.
+          </p>
+        </div>
+
+        <div class="vision-divider"></div>
+
+        <div class="vision-col">
+          <p>Agents think deeply &mdash; then forget everything.</p>
+          <p>
+            Your agent can research, analyze, and reason. But when the session ends,
+            the thinking disappears. Tomorrow it starts from zero. There's nowhere
+            for understanding to accumulate.
+          </p>
+        </div>
+
+        <div class="vision-conclusion">
+          <p>sayou gives thinking a place to live.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Principles -->
+  <section>
+    <div class="container">
+      <div class="section-label">How It Works</div>
+      <h2 class="section-title">Files that hold what databases can't.</h2>
+
+      <div class="principles-grid">
+        <div class="principle-card">
+          <h3>Structure and context in one file</h3>
+          <p>
+            YAML frontmatter for structured fields. Markdown body for reasoning,
+            notes, and context. One file holds what a database splits across
+            tables &mdash; queryable, human-readable, and natively understood by LLMs.
+          </p>
+        </div>
+
+        <div class="principle-card">
+          <h3>Knowledge that compounds</h3>
+          <p>
+            Every write creates a new version. Nothing is lost.
+            The full history of how understanding evolved &mdash; visible,
+            auditable, reversible.
+          </p>
+        </div>
+
+        <div class="principle-card">
+          <h3>Any agent can connect</h3>
+          <p>
+            MCP server for Claude Code, Cursor, and any MCP-compatible tool.
+            Python library for direct integration.
+            No vendor lock-in. Bring your own agent framework.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: The File -->
+  <section class="section-alt">
+    <div class="container">
+      <div class="section-label">The Unit</div>
+      <h2 class="section-title">One read. Full context.</h2>
+
+      <div class="file-grid">
+        <div class="file-block">
+          <div class="file-block-header">clients/acme-corp.md</div>
+          <pre><span class="fm-delim">---</span>
+<span class="fm-key">company</span><span class="fm-delim">:</span> <span class="fm-val">Acme Corp</span>
+<span class="fm-key">status</span><span class="fm-delim">:</span> <span class="fm-val">active</span>
+<span class="fm-key">stage</span><span class="fm-delim">:</span> <span class="fm-val">proposal_sent</span>
+<span class="fm-key">deal_size</span><span class="fm-delim">:</span> <span class="fm-val">$180,000</span>
+<span class="fm-key">last_contact</span><span class="fm-delim">:</span> <span class="fm-val">2025-02-12</span>
+<span class="fm-delim">---</span>
+
+<span class="fm-heading"># Acme Corp</span>
+
+<span class="fm-heading">## Context</span>
+- Evaluated three competitors before us
+- Technical team is skeptical, needs POC
+- Budget approved through Q3
+
+<span class="fm-heading">## Meeting Notes</span>
+- Feb 10: Reviewed draft, wants deeper analysis
+- Jan 20: Kickoff, aligned on scope</pre>
+        </div>
+
+        <div class="file-explanation">
+          <p>In a traditional CRM, your agent needs:</p>
+          <ul>
+            <li>A <strong>contacts</strong> query for the name and company</li>
+            <li>A <strong>deals</strong> query for stage and value</li>
+            <li>An <strong>activities</strong> query for meeting notes</li>
+            <li>A <strong>notes</strong> query for the unstructured context</li>
+          </ul>
+          <p class="file-standalone">In sayou, the agent reads one file and has everything.</p>
+          <p class="file-standalone-sub">
+            Frontmatter for structure. Markdown for context.
+            Versioned. Auditable. Readable by any agent &mdash; or any human.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: In Practice -->
+  <section>
+    <div class="container">
+      <div class="section-label">In Practice</div>
+      <h2 class="section-title" style="text-align: center;">How agents use sayou</h2>
+
+      <p style="text-align: center; max-width: 560px; margin: 0 auto var(--space-12); color: var(--text-secondary);">
+        Two interfaces, one workspace. Use the Python SDK in your agent code,
+        or connect as an MCP server for Claude Code and Cursor.
+      </p>
+
+      <div class="code-sequence">
+        <div>
+          <div class="code-step-label">Python SDK &mdash; Day 1</div>
+          <div class="code-block">
+            <pre><span class="code-key">from</span> <span class="code-var">sayou</span> <span class="code-key">import</span> <span class="code-var">Workspace</span>
+
+<span class="code-key">async with</span> <span class="code-fn">Workspace</span>() <span class="code-key">as</span> <span class="code-var">ws</span>:
+    <span class="code-comment"># Agent stores today's competitive analysis</span>
+    <span class="code-key">await</span> <span class="code-var">ws</span>.<span class="code-fn">write</span>(
+        <span class="code-str">"research/market/2025-02-14.md"</span>,
+        <span class="code-str">"""---
+status: draft
+topic: competitive-landscape
+---
+# Market Analysis
+
+Competitor X launched a new product targeting
+mid-market. Pricing undercuts ours by 20%..."""</span>
+    )</pre>
+          </div>
+        </div>
+
+        <div>
+          <div class="code-step-label">Python SDK &mdash; Day 30</div>
+          <div class="code-block">
+            <pre><span class="code-key">async with</span> <span class="code-fn">Workspace</span>() <span class="code-key">as</span> <span class="code-var">ws</span>:
+    <span class="code-comment"># 30 daily reports have accumulated</span>
+    <span class="code-var">files</span> = <span class="code-key">await</span> <span class="code-var">ws</span>.<span class="code-fn">list</span>(<span class="code-str">"research/market/"</span>)
+
+    <span class="code-comment"># Search file contents for a specific topic</span>
+    <span class="code-var">hits</span> = <span class="code-key">await</span> <span class="code-var">ws</span>.<span class="code-fn">grep</span>(<span class="code-str">"competitor X"</span>, <span class="code-key">path_pattern</span>=<span class="code-str">"research/**"</span>)
+
+    <span class="code-comment"># Query by frontmatter</span>
+    <span class="code-var">active</span> = <span class="code-key">await</span> <span class="code-var">ws</span>.<span class="code-fn">search</span>(<span class="code-key">filters</span>={<span class="code-str">"status"</span>: <span class="code-str">"active"</span>})
+
+    <span class="code-comment"># Build a synthesis from a month of research</span>
+    <span class="code-key">await</span> <span class="code-var">ws</span>.<span class="code-fn">write</span>(<span class="code-str">"research/market/february-synthesis.md"</span>, <span class="code-var">report</span>)</pre>
+          </div>
+        </div>
+
+        <div>
+          <div class="code-step-label">MCP &mdash; Claude Code / Cursor</div>
+          <div class="code-block">
+            <pre><span class="code-comment">// Same workspace, accessed via MCP tools</span>
+<span class="code-fn">workspace_write</span>(<span class="code-key">path</span> = <span class="code-str">"research/market/2025-02-14.md"</span>, <span class="code-key">content</span> = <span class="code-var">...</span>)
+<span class="code-fn">workspace_list</span>(<span class="code-key">path</span> = <span class="code-str">"research/market/"</span>)
+<span class="code-fn">workspace_grep</span>(<span class="code-key">query</span> = <span class="code-str">"competitor X"</span>)
+<span class="code-fn">workspace_glob</span>(<span class="code-key">pattern</span> = <span class="code-str">"research/**/*.md"</span>)</pre>
+          </div>
+        </div>
+
+        <div class="code-conclusion">
+          <p>Without sayou, day 30's agent starts from scratch.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6: Architecture -->
+  <section class="section-alt">
+    <div class="container">
+      <div class="section-label">Architecture</div>
+      <h2 class="section-title" style="text-align: center;">Simple by design</h2>
+
+      <div class="arch-diagram">
+        <div class="arch-row">
+          <div class="arch-box">
+            <div class="arch-box-title">Your Agent</div>
+            <div class="arch-box-sub">Python SDK / MCP</div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box arch-box-accent">
+            <div class="arch-box-title">sayou</div>
+            <div class="arch-box-sub">Workspace class / MCP server</div>
+          </div>
+          <div class="arch-arrow">&rarr;</div>
+          <div class="arch-box">
+            <div class="arch-box-title">Storage</div>
+            <div class="arch-box-sub">Local filesystem / S3</div>
+          </div>
+        </div>
+
+        <div class="arch-arrow-down">&darr;</div>
+
+        <div class="arch-box">
+          <div class="arch-box-title">Index</div>
+          <div class="arch-box-sub">SQLite / PostgreSQL / MySQL</div>
+        </div>
+      </div>
+
+      <div class="positioning-grid">
+        <div class="positioning-card">
+          <p><strong>Not a vector database.</strong> Stores files, not embeddings.</p>
+        </div>
+        <div class="positioning-card">
+          <p><strong>Not a memory layer.</strong> Stores work product, not conversation snippets.</p>
+        </div>
+        <div class="positioning-card">
+          <p><strong>Not a sandbox.</strong> Persistent storage, not ephemeral execution.</p>
+        </div>
+        <div class="positioning-card">
+          <p><strong>Not a filesystem.</strong> A knowledge workspace with versioning and indexing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 7: Open Source -->
+  <section>
+    <div class="container">
+      <div class="section-label">Open Source</div>
+      <h2 class="section-title">Built in the open</h2>
+
+      <div class="opensource-text">
+        <p>
+          <span class="highlight">Apache 2.0</span> from day one. Infrastructure should be a shared
+          standard, not a proprietary moat. The infrastructure layers that win are the ones that become
+          open standards. sayou aims to be the standard for agent persistent storage.
+        </p>
+      </div>
+
+      <div class="install-card">
+        <div class="code-block">
+          <pre><span class="code-fn">pip install</span> <span class="code-str">sayou</span></pre>
+        </div>
+        <div class="code-block">
+          <pre><span class="code-comment"># Python SDK &mdash; for LangChain, CrewAI, or any Python agent</span>
+<span class="code-key">from</span> <span class="code-var">sayou</span> <span class="code-key">import</span> <span class="code-var">Workspace</span>
+
+<span class="code-key">async with</span> <span class="code-fn">Workspace</span>() <span class="code-key">as</span> <span class="code-var">ws</span>:
+    <span class="code-key">await</span> <span class="code-var">ws</span>.<span class="code-fn">write</span>(<span class="code-str">"notes.md"</span>, <span class="code-str">"# Hello"</span>)
+    <span class="code-var">data</span> = <span class="code-key">await</span> <span class="code-var">ws</span>.<span class="code-fn">read</span>(<span class="code-str">"notes.md"</span>)</pre>
+        </div>
+        <div class="code-block">
+          <pre><span class="code-comment"># MCP &mdash; for Claude Code, Cursor, or any MCP client</span>
+{
+  <span class="code-key">"mcpServers"</span>: {
+    <span class="code-key">"sayou"</span>: {
+      <span class="code-key">"command"</span>: <span class="code-str">"sayou"</span>,
+      <span class="code-key">"env"</span>: {
+        <span class="code-key">"SAYOU_DATABASE_URL"</span>: <span class="code-str">"sqlite+aiosqlite:///./sayou.db"</span>,
+        <span class="code-key">"SAYOU_ORG_ID"</span>: <span class="code-str">"your-org-id"</span>,
+        <span class="code-key">"SAYOU_USER_ID"</span>: <span class="code-str">"your-user-id"</span>
+      }
+    }
+  }
+}</pre>
+        </div>
+      </div>
+
+      <div class="opensource-ctas">
+        <a href="#" class="btn btn-secondary">GitHub</a>
+        <a href="#" class="btn btn-secondary">Documentation</a>
+        <a href="#" class="btn btn-secondary">Contributing</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-brand">sayou</div>
+      <div class="footer-brand-kr">사유</div>
+
+      <nav class="footer-links">
+        <a href="#">Documentation</a>
+        <a href="#">GitHub</a>
+        <a href="#">Contributing</a>
+        <a href="#">License</a>
+      </nav>
+
+      <p class="footer-attribution">Built by the team behind Pixell.</p>
+      <p class="footer-license">Apache 2.0</p>
+    </div>
+  </footer>
+
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      document.querySelector('.theme-icon').textContent = next === 'dark' ? 'light' : 'dark';
+    }
+  </script>
+
+</body>
+</html>

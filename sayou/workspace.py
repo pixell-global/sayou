@@ -1,0 +1,215 @@
+"""Public Python API for sayou workspaces."""
+
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+
+from sayou.catalog.models import Base
+from sayou.core.workspace import WorkspaceService
+from sayou.storage.local import LocalStorage
+from sayou.storage.s3 import StorageService
+
+
+class Workspace:
+    """High-level Python interface for sayou workspaces.
+
+    Binds identity (org, user, workspace) once at construction time.
+    All methods delegate to WorkspaceService with pre-bound values.
+
+    Usage::
+
+        async with Workspace() as ws:
+            await ws.write("hello.md", "# Hello")
+            result = await ws.read("hello.md")
+    """
+
+    def __init__(
+        self,
+        slug: str = "default",
+        *,
+        org_id: str | None = None,
+        user_id: str | None = None,
+        database_url: str | None = None,
+        s3_bucket: str | None = None,
+        s3_region: str | None = None,
+        s3_access_key_id: str | None = None,
+        s3_secret_access_key: str | None = None,
+        s3_endpoint_url: str | None = None,
+        storage_path: str | None = None,
+        source: str | None = None,
+    ):
+        self._slug = slug
+        self._org_id = org_id or os.environ.get("SAYOU_ORG_ID") or "local"
+        self._user_id = user_id or os.environ.get("SAYOU_USER_ID") or "default-user"
+        self._database_url = (
+            database_url
+            or os.environ.get("SAYOU_DATABASE_URL")
+            or "sqlite+aiosqlite:///./sayou.db"
+        )
+        self._s3_bucket = s3_bucket
+        self._s3_region = s3_region
+        self._s3_access_key_id = s3_access_key_id
+        self._s3_secret_access_key = s3_secret_access_key
+        self._s3_endpoint_url = s3_endpoint_url
+        self._storage_path = storage_path
+        self._source = source
+
+        # Initialized in open()
+        self._engine = None
+        self._session_factory = None
+        self._storage = None
+        self._service: WorkspaceService | None = None
+        self._opened = False
+
+    async def open(self) -> Workspace:
+        """Initialize database engine, storage backend, and workspace service."""
+        if self._opened:
+            return self
+
+        # Create engine
+        is_sqlite = self._database_url.startswith("sqlite")
+        engine_kwargs = {}
+        if is_sqlite:
+            engine_kwargs["connect_args"] = {"check_same_thread": False}
+            engine_kwargs["poolclass"] = StaticPool
+
+        self._engine = create_async_engine(self._database_url, **engine_kwargs)
+        self._session_factory = async_sessionmaker(
+            self._engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        # Auto-create tables for SQLite
+        if is_sqlite:
+            async with self._engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
+        # Select storage backend
+        has_s3 = bool(self._s3_access_key_id and self._s3_secret_access_key)
+        if has_s3:
+            self._storage = StorageService(
+                bucket=self._s3_bucket,
+                region=self._s3_region,
+                endpoint_url=self._s3_endpoint_url,
+                access_key_id=self._s3_access_key_id,
+                secret_access_key=self._s3_secret_access_key,
+            )
+        else:
+            self._storage = LocalStorage(
+                base_path=self._storage_path or "~/.sayou/storage"
+            )
+
+        self._service = WorkspaceService(
+            storage=self._storage, _get_db=self._get_db
+        )
+        self._opened = True
+        return self
+
+    async def close(self) -> None:
+        """Dispose engine and close storage."""
+        if self._service:
+            await self._service.close()
+            self._service = None
+        if self._engine:
+            await self._engine.dispose()
+            self._engine = None
+        self._session_factory = None
+        self._storage = None
+        self._opened = False
+
+    @asynccontextmanager
+    async def _get_db(self):
+        """Instance-scoped session factory as async context manager."""
+        session = self._session_factory()
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+    async def _ensure_open(self):
+        """Lazy init: call open() on first use if not already opened."""
+        if not self._opened:
+            await self.open()
+
+    async def __aenter__(self) -> Workspace:
+        await self.open()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.close()
+
+    # ── Public methods ──────────────────────────────────────────────
+
+    async def write(self, path: str, content: str, *, source: str | None = None) -> dict:
+        """Write a file to the workspace."""
+        await self._ensure_open()
+        return await self._service.write(
+            self._org_id, self._user_id, self._slug, path, content,
+            source=source or self._source,
+        )
+
+    async def read(
+        self, path: str, *, token_budget: int = 4000, version: int | None = None
+    ) -> dict:
+        """Read a file from the workspace."""
+        await self._ensure_open()
+        return await self._service.read(
+            self._org_id, self._user_id, self._slug, path,
+            token_budget=token_budget, version_number=version,
+        )
+
+    async def list(self, path: str = "/", *, recursive: bool = False) -> dict:
+        """List files and subfolders in a folder."""
+        await self._ensure_open()
+        return await self._service.list_folder(
+            self._org_id, self._user_id, self._slug, path, recursive=recursive,
+        )
+
+    async def glob(self, pattern: str) -> dict:
+        """Find files matching a glob pattern."""
+        await self._ensure_open()
+        return await self._service.glob_files(
+            self._org_id, self._user_id, self._slug, pattern,
+        )
+
+    async def grep(
+        self, query: str, *, path_pattern: str | None = None, context_lines: int = 2
+    ) -> dict:
+        """Search file content for a query string."""
+        await self._ensure_open()
+        return await self._service.grep_files(
+            self._org_id, self._user_id, self._slug, query,
+            path_pattern=path_pattern, context_lines=context_lines,
+        )
+
+    async def search(
+        self, *, query: str | None = None, filters: dict | None = None
+    ) -> dict:
+        """Search files by frontmatter filters and/or full-text query."""
+        await self._ensure_open()
+        return await self._service.search(
+            self._org_id, self._user_id, self._slug,
+            query=query, filters=filters,
+        )
+
+    async def delete(self, path: str, *, source: str | None = None) -> dict:
+        """Soft-delete a file."""
+        await self._ensure_open()
+        return await self._service.delete(
+            self._org_id, self._user_id, self._slug, path,
+            source=source or self._source,
+        )
+
+    async def history(self, path: str, *, limit: int = 20) -> dict:
+        """Get version history for a file."""
+        await self._ensure_open()
+        return await self._service.history(
+            self._org_id, self._user_id, self._slug, path, limit=limit,
+        )

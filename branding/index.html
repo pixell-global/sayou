@@ -1,0 +1,1956 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sayou Brand Guidelines</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:wght@300;400;500&family=Noto+Serif+KR:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ===== TOKENS ===== */
+    :root {
+      --sayou-gold: #C4A46E;
+      --sayou-gold-light: #D4B97E;
+      --sayou-gold-dark: #A68B55;
+      --sayou-bisaek: #8FB5A3;
+      --sayou-hwangto: #B08968;
+      --sayou-hanji: #E8DFD0;
+
+      --font-display: 'Cormorant Garamond', Georgia, serif;
+      --font-display-kr: 'Noto Serif KR', serif;
+      --font-body: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+
+      --duration-normal: 300ms;
+      --duration-slow: 500ms;
+      --easing-default: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    [data-theme="dark"] {
+      --bg-app: #0C0B0A;
+      --bg-primary: #141310;
+      --bg-secondary: #1A1916;
+      --bg-surface: #21201C;
+      --bg-elevated: #2A2823;
+      --bg-hover: #33312B;
+      --bg-active: #3D3A33;
+
+      --text-primary: #E8E3D8;
+      --text-secondary: #B0AA9D;
+      --text-tertiary: #8A8579;
+      --text-muted: #625E53;
+
+      --border-default: #2A2823;
+      --border-subtle: #21201C;
+
+      --color-success: #5DAD7B;
+      --color-success-bg: #1A2E22;
+      --color-warning: #D4A248;
+      --color-warning-bg: #2E2515;
+      --color-error: #D4645C;
+      --color-error-bg: #2E1A18;
+      --color-info: #6BA3BE;
+      --color-info-bg: #172A33;
+    }
+
+    [data-theme="light"] {
+      --bg-app: #FAF8F4;
+      --bg-primary: #F2EEE7;
+      --bg-secondary: #E8E3D8;
+      --bg-surface: #FFFFFF;
+      --bg-elevated: #FFFFFF;
+      --bg-hover: #F2EEE7;
+      --bg-active: #E8E3D8;
+
+      --text-primary: #3D3832;
+      --text-secondary: #5C564C;
+      --text-tertiary: #7D766A;
+      --text-muted: #A49C8C;
+
+      --border-default: #D1CBBD;
+      --border-subtle: #DDD7CA;
+
+      --color-success: #2E7D4F;
+      --color-success-bg: #E8F5EC;
+      --color-warning: #A67A1A;
+      --color-warning-bg: #FEF5E0;
+      --color-error: #C4382E;
+      --color-error-bg: #FDE8E6;
+      --color-info: #337EA9;
+      --color-info-bg: #E7F3F8;
+    }
+
+    /* ===== RESET ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ===== BASE ===== */
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: var(--font-body);
+      font-weight: 400;
+      font-size: 16px;
+      line-height: 1.625;
+      color: var(--text-secondary);
+      background-color: var(--bg-app);
+      transition: background-color var(--duration-slow) var(--easing-default),
+                  color var(--duration-slow) var(--easing-default);
+    }
+
+    /* ===== LAYOUT ===== */
+    .page { max-width: 1120px; margin: 0 auto; padding: 0 32px; }
+
+    /* ===== HERO ===== */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 96px 32px;
+      position: relative;
+    }
+
+    .hero-wordmark {
+      font-family: var(--font-display);
+      font-weight: 300;
+      font-size: 96px;
+      letter-spacing: 0.06em;
+      color: var(--text-primary);
+      line-height: 1;
+      margin-bottom: 16px;
+    }
+
+    .hero-wordmark-kr {
+      font-family: var(--font-display-kr);
+      font-weight: 300;
+      font-size: 36px;
+      color: var(--text-tertiary);
+      letter-spacing: 0.15em;
+      margin-bottom: 64px;
+    }
+
+    .hero-tagline {
+      font-family: var(--font-body);
+      font-weight: 400;
+      font-size: 18px;
+      line-height: 1.7;
+      color: var(--text-tertiary);
+      max-width: 520px;
+    }
+
+    .hero-scroll {
+      position: absolute;
+      bottom: 48px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .hero-scroll-line {
+      width: 1px;
+      height: 40px;
+      background: var(--text-muted);
+      animation: scroll-pulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes scroll-pulse {
+      0%, 100% { opacity: 0.2; transform: scaleY(0.5); }
+      50% { opacity: 0.6; transform: scaleY(1); }
+    }
+
+    /* ===== NAVIGATION ===== */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 20px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: transparent;
+      transition: background-color var(--duration-normal) var(--easing-default);
+    }
+
+    .nav.scrolled {
+      background: var(--bg-app);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .nav-brand {
+      font-family: var(--font-display);
+      font-weight: 300;
+      font-size: 24px;
+      color: var(--text-primary);
+      text-decoration: none;
+      letter-spacing: 0.04em;
+    }
+
+    .theme-toggle {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-family: var(--font-body);
+      font-size: 13px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: all var(--duration-normal) var(--easing-default);
+    }
+
+    .theme-toggle:hover {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+
+    /* ===== SECTIONS ===== */
+    .section {
+      padding: 128px 0;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .section:first-of-type { border-top: none; }
+
+    .section-label {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--sayou-gold);
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-weight: 400;
+      font-size: 36px;
+      line-height: 1.2;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      letter-spacing: 0.02em;
+    }
+
+    .section-desc {
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--text-tertiary);
+      max-width: 640px;
+      margin-bottom: 64px;
+    }
+
+    /* ===== PHILOSOPHY ===== */
+    .philosophy-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+    }
+
+    .philosophy-card {
+      padding: 40px 32px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      transition: all var(--duration-normal) var(--easing-default);
+    }
+
+    .philosophy-card:hover {
+      border-color: var(--border-default);
+      background: var(--bg-elevated);
+    }
+
+    .philosophy-card-kr {
+      font-family: var(--font-display-kr);
+      font-weight: 300;
+      font-size: 32px;
+      color: var(--sayou-gold);
+      margin-bottom: 4px;
+    }
+
+    .philosophy-card-roman {
+      font-family: var(--font-body);
+      font-weight: 400;
+      font-size: 13px;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      margin-bottom: 20px;
+    }
+
+    .philosophy-card-title {
+      font-family: var(--font-display);
+      font-weight: 400;
+      font-size: 22px;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+
+    .philosophy-card p {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text-tertiary);
+    }
+
+    /* ===== TYPOGRAPHY ===== */
+    .type-specimen {
+      margin-bottom: 64px;
+    }
+
+    .type-specimen-row {
+      display: flex;
+      align-items: baseline;
+      padding: 32px 0;
+      border-bottom: 1px solid var(--border-subtle);
+      gap: 32px;
+    }
+
+    .type-specimen-meta {
+      flex: 0 0 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .type-specimen-name {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .type-specimen-detail {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .type-specimen-sample {
+      flex: 1;
+      color: var(--text-primary);
+    }
+
+    .type-display {
+      font-family: var(--font-display);
+      font-weight: 300;
+      font-size: 48px;
+      line-height: 56px;
+      letter-spacing: 0.02em;
+    }
+
+    .type-h1 {
+      font-family: var(--font-display);
+      font-weight: 400;
+      font-size: 36px;
+      line-height: 44px;
+      letter-spacing: 0.02em;
+    }
+
+    .type-h2 {
+      font-family: var(--font-display);
+      font-weight: 400;
+      font-size: 28px;
+      line-height: 36px;
+      letter-spacing: 0.02em;
+    }
+
+    .type-h3 {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 22px;
+      line-height: 30px;
+    }
+
+    .type-h4 {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 18px;
+      line-height: 26px;
+    }
+
+    .type-body {
+      font-family: var(--font-body);
+      font-weight: 400;
+      font-size: 16px;
+      line-height: 26px;
+    }
+
+    .type-body-sm {
+      font-family: var(--font-body);
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 22px;
+    }
+
+    .type-caption {
+      font-family: var(--font-body);
+      font-weight: 400;
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .type-code {
+      font-family: var(--font-mono);
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 22px;
+    }
+
+    .type-kr {
+      font-family: var(--font-display-kr);
+    }
+
+    /* Font family showcase */
+    .font-families {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      margin-bottom: 80px;
+    }
+
+    .font-family-card {
+      padding: 40px 32px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+    }
+
+    .font-family-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--sayou-gold);
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+
+    .font-family-role {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+
+    .font-family-sample {
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .font-family-sample.serif {
+      font-family: var(--font-display);
+      font-weight: 300;
+      font-size: 32px;
+      line-height: 1.3;
+      letter-spacing: 0.02em;
+    }
+
+    .font-family-sample.sans {
+      font-family: var(--font-body);
+      font-weight: 400;
+      font-size: 24px;
+      line-height: 1.4;
+    }
+
+    .font-family-sample.mono {
+      font-family: var(--font-mono);
+      font-weight: 400;
+      font-size: 20px;
+      line-height: 1.5;
+    }
+
+    .font-family-charset {
+      font-size: 14px;
+      line-height: 1.8;
+      color: var(--text-tertiary);
+      word-break: break-all;
+    }
+
+    .font-family-charset.serif { font-family: var(--font-display); font-weight: 300; }
+    .font-family-charset.sans { font-family: var(--font-body); }
+    .font-family-charset.mono { font-family: var(--font-mono); }
+
+    /* ===== COLORS ===== */
+    .color-group {
+      margin-bottom: 80px;
+    }
+
+    .color-group-title {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .brand-colors {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 16px;
+    }
+
+    .brand-color {
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .brand-color-swatch {
+      height: 120px;
+      position: relative;
+    }
+
+    .brand-color-info {
+      padding: 16px;
+      background: var(--bg-surface);
+    }
+
+    .brand-color-name {
+      font-weight: 500;
+      font-size: 13px;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .brand-color-kr {
+      font-family: var(--font-display-kr);
+      font-weight: 300;
+      font-size: 13px;
+      color: var(--text-tertiary);
+      margin-bottom: 8px;
+    }
+
+    .brand-color-hex {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Gray scale */
+    .gray-scale {
+      display: flex;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .gray-step {
+      flex: 1;
+      padding: 16px 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      min-height: 100px;
+      transition: flex var(--duration-normal) var(--easing-default);
+    }
+
+    .gray-step:hover { flex: 2; }
+
+    .gray-step-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      opacity: 0.7;
+      margin-bottom: 2px;
+    }
+
+    .gray-step-hex {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      opacity: 0.5;
+    }
+
+    /* Semantic colors */
+    .semantic-colors {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .semantic-color {
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .semantic-color-bar {
+      height: 8px;
+    }
+
+    .semantic-color-body {
+      padding: 20px;
+    }
+
+    .semantic-color-bg {
+      padding: 16px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+
+    .semantic-color-name {
+      font-weight: 500;
+      font-size: 13px;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .semantic-color-hex {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Background layers */
+    .bg-layers {
+      display: flex;
+      gap: 0;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .bg-layer {
+      flex: 1;
+      padding: 24px 16px;
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      transition: flex var(--duration-normal) var(--easing-default);
+    }
+
+    .bg-layer:hover { flex: 1.5; }
+
+    .bg-layer-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .bg-layer-token {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    .bg-layer-hex {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      opacity: 0.6;
+    }
+
+    /* ===== SPACING ===== */
+    .spacing-scale {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .spacing-row {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .spacing-meta {
+      flex: 0 0 120px;
+      text-align: right;
+    }
+
+    .spacing-value {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .spacing-token {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .spacing-bar {
+      height: 32px;
+      background: var(--sayou-gold);
+      opacity: 0.15;
+      border-radius: 4px;
+      transition: opacity var(--duration-normal) var(--easing-default);
+      position: relative;
+    }
+
+    .spacing-bar::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--sayou-gold);
+      border-radius: 4px 0 0 4px;
+    }
+
+    .spacing-row:hover .spacing-bar { opacity: 0.3; }
+
+    .spacing-label {
+      font-size: 13px;
+      color: var(--text-tertiary);
+      flex: 0 0 200px;
+    }
+
+    /* ===== RADIUS ===== */
+    .radius-samples {
+      display: flex;
+      gap: 32px;
+      align-items: flex-end;
+    }
+
+    .radius-sample {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .radius-box {
+      width: 80px;
+      height: 80px;
+      background: var(--bg-elevated);
+      border: 2px solid var(--sayou-gold);
+      opacity: 0.6;
+      transition: opacity var(--duration-normal) var(--easing-default);
+    }
+
+    .radius-sample:hover .radius-box { opacity: 1; }
+
+    .radius-label {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .radius-name {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      text-align: center;
+    }
+
+    /* ===== COMPONENTS ===== */
+    .component-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 32px;
+    }
+
+    .component-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 40px;
+    }
+
+    .component-card-title {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 13px;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 14px;
+      padding: 10px 24px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--duration-normal) var(--easing-default);
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: var(--sayou-gold);
+      color: #141310;
+    }
+
+    .btn-primary:hover {
+      background: var(--sayou-gold-light);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--text-muted);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-tertiary);
+      border: none;
+    }
+
+    .btn-ghost:hover {
+      color: var(--text-primary);
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    /* Inputs */
+    .input-field {
+      width: 100%;
+      font-family: var(--font-body);
+      font-size: 14px;
+      padding: 10px 16px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      outline: none;
+      transition: all var(--duration-normal) var(--easing-default);
+    }
+
+    .input-field::placeholder {
+      color: var(--text-muted);
+    }
+
+    .input-field:focus {
+      border-color: var(--sayou-gold);
+      box-shadow: 0 0 0 3px rgba(196, 164, 110, 0.1);
+    }
+
+    .input-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Cards */
+    .demo-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      transition: all var(--duration-normal) var(--easing-default);
+    }
+
+    .demo-card:hover {
+      border-color: var(--border-default);
+    }
+
+    .demo-card-eyebrow {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--sayou-gold);
+      margin-bottom: 12px;
+    }
+
+    .demo-card-title {
+      font-family: var(--font-display);
+      font-weight: 400;
+      font-size: 22px;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .demo-card-body {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text-tertiary);
+      margin-bottom: 20px;
+    }
+
+    .demo-card-meta {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Alerts */
+    .alert {
+      padding: 16px 20px;
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .alert-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .alert-success { background: var(--color-success-bg); color: var(--color-success); }
+    .alert-success .alert-dot { background: var(--color-success); }
+
+    .alert-warning { background: var(--color-warning-bg); color: var(--color-warning); }
+    .alert-warning .alert-dot { background: var(--color-warning); }
+
+    .alert-error { background: var(--color-error-bg); color: var(--color-error); }
+    .alert-error .alert-dot { background: var(--color-error); }
+
+    .alert-info { background: var(--color-info-bg); color: var(--color-info); }
+    .alert-info .alert-dot { background: var(--color-info); }
+
+    .alert-stack { display: flex; flex-direction: column; gap: 12px; }
+
+    /* Code block */
+    .code-block {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text-secondary);
+      overflow-x: auto;
+    }
+
+    .code-block .code-comment { color: var(--text-muted); }
+    .code-block .code-key { color: var(--sayou-bisaek); }
+    .code-block .code-value { color: var(--sayou-gold); }
+    .code-block .code-string { color: var(--color-success); }
+
+    /* ===== VOICE & TONE ===== */
+    .voice-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      background: var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .voice-cell {
+      padding: 24px 32px;
+      background: var(--bg-surface);
+    }
+
+    .voice-cell.header {
+      font-weight: 500;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 16px 32px;
+    }
+
+    .voice-cell.do {
+      color: var(--text-primary);
+      font-size: 15px;
+    }
+
+    .voice-cell.dont {
+      color: var(--text-muted);
+      font-size: 15px;
+      text-decoration: line-through;
+      text-decoration-color: var(--color-error);
+      text-decoration-thickness: 1px;
+    }
+
+    .voice-context {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    /* ===== ANIMATION DEMO ===== */
+    .animation-demos {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+    }
+
+    .animation-demo {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .animation-demo-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .animation-demo-sublabel {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    /* Breathing dot */
+    .breathing-dot {
+      width: 24px;
+      height: 24px;
+      background: var(--sayou-gold);
+      border-radius: 50%;
+      animation: breathe 4s ease-in-out infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { transform: scale(0.8); opacity: 0.4; }
+      50% { transform: scale(1.2); opacity: 0.8; }
+    }
+
+    /* Hover reveal */
+    .hover-reveal {
+      width: 120px;
+      height: 48px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: var(--text-tertiary);
+      cursor: pointer;
+      transition: all 300ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .hover-reveal:hover {
+      background: var(--sayou-gold);
+      color: #141310;
+      border-color: var(--sayou-gold);
+      transform: translateY(-2px);
+    }
+
+    /* Fade shift */
+    .fade-shift {
+      width: 80px;
+      height: 80px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      animation: fadeShift 5s ease-in-out infinite;
+    }
+
+    @keyframes fadeShift {
+      0%, 100% { opacity: 0.3; transform: translateY(8px); }
+      50% { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===== WORDMARK SECTION ===== */
+    .wordmark-display {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .wordmark-variant {
+      padding: 64px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+    }
+
+    .wordmark-variant-word {
+      font-family: var(--font-display);
+      font-weight: 300;
+      font-size: 48px;
+      letter-spacing: 0.05em;
+    }
+
+    .wordmark-variant-kr {
+      font-family: var(--font-display-kr);
+      font-weight: 300;
+      font-size: 20px;
+      letter-spacing: 0.1em;
+    }
+
+    .wordmark-variant-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      opacity: 0.5;
+    }
+
+    .wv-dark {
+      background: #0C0B0A;
+    }
+
+    .wv-dark .wordmark-variant-word { color: #E8E3D8; }
+    .wv-dark .wordmark-variant-kr { color: #8A8579; }
+    .wv-dark .wordmark-variant-label { color: #625E53; }
+
+    .wv-light {
+      background: #FAF8F4;
+    }
+
+    .wv-light .wordmark-variant-word { color: #3D3832; }
+    .wv-light .wordmark-variant-kr { color: #7D766A; }
+    .wv-light .wordmark-variant-label { color: #A49C8C; }
+
+    .wv-gold {
+      background: #141310;
+    }
+
+    .wv-gold .wordmark-variant-word { color: #C4A46E; }
+    .wv-gold .wordmark-variant-kr { color: #A68B55; }
+    .wv-gold .wordmark-variant-label { color: #625E53; }
+
+    /* ===== FOOTER ===== */
+    .footer {
+      padding: 64px 0;
+      border-top: 1px solid var(--border-subtle);
+      text-align: center;
+    }
+
+    .footer-brand {
+      font-family: var(--font-display);
+      font-weight: 300;
+      font-size: 20px;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+    }
+
+    .footer-sub {
+      font-family: var(--font-display-kr);
+      font-weight: 300;
+      font-size: 14px;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      opacity: 0.5;
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+      .hero-wordmark { font-size: 56px; }
+      .hero-wordmark-kr { font-size: 24px; }
+      .philosophy-grid { grid-template-columns: 1fr; }
+      .font-families { grid-template-columns: 1fr; }
+      .brand-colors { grid-template-columns: repeat(3, 1fr); }
+      .semantic-colors { grid-template-columns: repeat(2, 1fr); }
+      .component-grid { grid-template-columns: 1fr; }
+      .animation-demos { grid-template-columns: 1fr; }
+      .voice-grid { grid-template-columns: 1fr; }
+      .wordmark-display { grid-template-columns: 1fr; }
+      .type-specimen-row { flex-direction: column; gap: 8px; }
+      .type-specimen-meta { flex: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="nav" id="nav">
+    <a href="#" class="nav-brand">sayou</a>
+    <button class="theme-toggle" onclick="toggleTheme()">
+      <span id="theme-label">Light mode</span>
+    </button>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="hero-wordmark">sayou</div>
+    <div class="hero-wordmark-kr">사유</div>
+    <p class="hero-tagline">
+      Deep contemplation. The act of quiet, focused thought.<br>
+      A brand guideline for clarity, warmth, and restraint.
+    </p>
+    <div class="hero-scroll">
+      <div class="hero-scroll-line"></div>
+      Scroll
+    </div>
+  </header>
+
+  <main class="page">
+
+    <!-- Philosophy -->
+    <section class="section" id="philosophy">
+      <div class="section-label">Philosophy</div>
+      <h2 class="section-title">Three principles of space</h2>
+      <p class="section-desc">
+        Inspired by the 사유의 방 (Room of Quiet Contemplation) at the National Museum of Korea.
+        A 439 sqm space of soil, charcoal, and lacquer, where visitors sit with Pensive Bodhisattva statues
+        beneath a shimmering ceiling of distant light.
+      </p>
+
+      <div class="philosophy-grid">
+        <div class="philosophy-card">
+          <div class="philosophy-card-kr">비움</div>
+          <div class="philosophy-card-roman">Bium</div>
+          <div class="philosophy-card-title">Emptiness as presence</div>
+          <p>The unfilled space holds meaning precisely because it is unfilled. Every element must earn its place. What we remove matters more than what we add.</p>
+        </div>
+        <div class="philosophy-card">
+          <div class="philosophy-card-kr">여백</div>
+          <div class="philosophy-card-roman">Yeobaek</div>
+          <div class="philosophy-card-title">Beauty of empty space</div>
+          <p>In Korean ink painting, the unpainted area is the most important element. Whitespace is not wasted space. It is where thought completes the experience.</p>
+        </div>
+        <div class="philosophy-card">
+          <div class="philosophy-card-kr">터</div>
+          <div class="philosophy-card-roman">Tuh</div>
+          <div class="philosophy-card-title">Character of place</div>
+          <p>From architect Choi Wook's philosophy. Digital surfaces should have warmth and presence, carrying memory and character. Not neutral containers.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Typography -->
+    <section class="section" id="typography">
+      <div class="section-label">Typography</div>
+      <h2 class="section-title">Museum Silence</h2>
+      <p class="section-desc">
+        The contrast between contemplative serifs and technical sans-serif mirrors the brand's core tension
+        &mdash; ancient Korean contemplative practice meets modern developer tooling.
+      </p>
+
+      <!-- Font families -->
+      <div class="font-families">
+        <div class="font-family-card">
+          <div class="font-family-name">Cormorant Garamond</div>
+          <div class="font-family-role">Display / Brand / Headings</div>
+          <div class="font-family-sample serif">Quiet thought finds depth in stillness</div>
+          <div class="font-family-charset serif">AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz 0123456789</div>
+        </div>
+        <div class="font-family-card">
+          <div class="font-family-name">IBM Plex Sans</div>
+          <div class="font-family-role">Body / UI</div>
+          <div class="font-family-sample sans">Clarity through restraint</div>
+          <div class="font-family-charset sans">AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz 0123456789</div>
+        </div>
+        <div class="font-family-card">
+          <div class="font-family-name">IBM Plex Mono</div>
+          <div class="font-family-role">Code / Data</div>
+          <div class="font-family-sample mono">Il1 0O {}[]&lt;&gt;</div>
+          <div class="font-family-charset mono">AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz 0123456789</div>
+        </div>
+      </div>
+
+      <!-- Type scale -->
+      <div class="color-group-title">Type Scale</div>
+      <div class="type-specimen">
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Display</span>
+            <span class="type-specimen-detail">48 / 56 &middot; Light 300</span>
+          </div>
+          <div class="type-specimen-sample type-display">Deep contemplation</div>
+        </div>
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Heading 1</span>
+            <span class="type-specimen-detail">36 / 44 &middot; Regular 400</span>
+          </div>
+          <div class="type-specimen-sample type-h1">The room of quiet thought</div>
+        </div>
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Heading 2</span>
+            <span class="type-specimen-detail">28 / 36 &middot; Regular 400</span>
+          </div>
+          <div class="type-specimen-sample type-h2">Where agents reflect on knowledge</div>
+        </div>
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Heading 3</span>
+            <span class="type-specimen-detail">22 / 30 &middot; Medium 500</span>
+          </div>
+          <div class="type-specimen-sample type-h3">Store, retrieve, understand</div>
+        </div>
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Heading 4</span>
+            <span class="type-specimen-detail">18 / 26 &middot; Medium 500</span>
+          </div>
+          <div class="type-specimen-sample type-h4">A data platform for contemplation</div>
+        </div>
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Body</span>
+            <span class="type-specimen-detail">16 / 26 &middot; Regular 400</span>
+          </div>
+          <div class="type-specimen-sample type-body">sayou stores and surfaces knowledge for your agents. The brand embodies the same philosophy as the 사유의 방: strip away noise, create space for meaning.</div>
+        </div>
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Body Small</span>
+            <span class="type-specimen-detail">14 / 22 &middot; Regular 400</span>
+          </div>
+          <div class="type-specimen-sample type-body-sm">Darkness is the canvas. Warmth is the accent. Restraint is the method.</div>
+        </div>
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Caption</span>
+            <span class="type-specimen-detail">12 / 18 &middot; Regular 400</span>
+          </div>
+          <div class="type-specimen-sample type-caption">Last modified 3 hours ago</div>
+        </div>
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Code</span>
+            <span class="type-specimen-detail">14 / 22 &middot; Mono 400</span>
+          </div>
+          <div class="type-specimen-sample type-code">workspace.store(key="사유", value=reflection)</div>
+        </div>
+        <div class="type-specimen-row">
+          <div class="type-specimen-meta">
+            <span class="type-specimen-name">Korean Display</span>
+            <span class="type-specimen-detail">36 / 44 &middot; Light 300</span>
+          </div>
+          <div class="type-specimen-sample type-h1 type-kr">고요한 사유의 공간</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Colors -->
+    <section class="section" id="colors">
+      <div class="section-label">Color</div>
+      <h2 class="section-title">Darkness, warmth, restraint</h2>
+      <p class="section-desc">
+        The palette draws from the aged gilt-bronze of the Pensive Bodhisattva, the hwangto earth of Korean walls,
+        the celadon of Goryeo ceramics, and the hanji warmth of handmade paper.
+      </p>
+
+      <!-- Brand colors -->
+      <div class="color-group">
+        <div class="color-group-title">Brand</div>
+        <div class="brand-colors">
+          <div class="brand-color">
+            <div class="brand-color-swatch" style="background: #C4A46E;"></div>
+            <div class="brand-color-info">
+              <div class="brand-color-name">Sayou Gold</div>
+              <div class="brand-color-kr">금동</div>
+              <div class="brand-color-hex">#C4A46E</div>
+            </div>
+          </div>
+          <div class="brand-color">
+            <div class="brand-color-swatch" style="background: #D4B97E;"></div>
+            <div class="brand-color-info">
+              <div class="brand-color-name">Gold Light</div>
+              <div class="brand-color-kr"></div>
+              <div class="brand-color-hex">#D4B97E</div>
+            </div>
+          </div>
+          <div class="brand-color">
+            <div class="brand-color-swatch" style="background: #A68B55;"></div>
+            <div class="brand-color-info">
+              <div class="brand-color-name">Gold Dark</div>
+              <div class="brand-color-kr"></div>
+              <div class="brand-color-hex">#A68B55</div>
+            </div>
+          </div>
+          <div class="brand-color">
+            <div class="brand-color-swatch" style="background: #8FB5A3;"></div>
+            <div class="brand-color-info">
+              <div class="brand-color-name">Bisaek</div>
+              <div class="brand-color-kr">비색</div>
+              <div class="brand-color-hex">#8FB5A3</div>
+            </div>
+          </div>
+          <div class="brand-color">
+            <div class="brand-color-swatch" style="background: #B08968;"></div>
+            <div class="brand-color-info">
+              <div class="brand-color-name">Hwangto</div>
+              <div class="brand-color-kr">황토</div>
+              <div class="brand-color-hex">#B08968</div>
+            </div>
+          </div>
+          <div class="brand-color">
+            <div class="brand-color-swatch" style="background: #E8DFD0;"></div>
+            <div class="brand-color-info">
+              <div class="brand-color-name">Hanji</div>
+              <div class="brand-color-kr">한지</div>
+              <div class="brand-color-hex">#E8DFD0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Background layers -->
+      <div class="color-group">
+        <div class="color-group-title">Background Layers (Dark)</div>
+        <div class="bg-layers">
+          <div class="bg-layer" style="background: #0C0B0A;">
+            <div class="bg-layer-name" style="color: #8A8579;">App</div>
+            <div class="bg-layer-token" style="color: #625E53;">bg-app</div>
+            <div class="bg-layer-hex" style="color: #625E53;">#0C0B0A</div>
+          </div>
+          <div class="bg-layer" style="background: #141310;">
+            <div class="bg-layer-name" style="color: #8A8579;">Primary</div>
+            <div class="bg-layer-token" style="color: #625E53;">bg-primary</div>
+            <div class="bg-layer-hex" style="color: #625E53;">#141310</div>
+          </div>
+          <div class="bg-layer" style="background: #1A1916;">
+            <div class="bg-layer-name" style="color: #8A8579;">Secondary</div>
+            <div class="bg-layer-token" style="color: #625E53;">bg-secondary</div>
+            <div class="bg-layer-hex" style="color: #625E53;">#1A1916</div>
+          </div>
+          <div class="bg-layer" style="background: #21201C;">
+            <div class="bg-layer-name" style="color: #8A8579;">Surface</div>
+            <div class="bg-layer-token" style="color: #625E53;">bg-surface</div>
+            <div class="bg-layer-hex" style="color: #625E53;">#21201C</div>
+          </div>
+          <div class="bg-layer" style="background: #2A2823;">
+            <div class="bg-layer-name" style="color: #8A8579;">Elevated</div>
+            <div class="bg-layer-token" style="color: #625E53;">bg-elevated</div>
+            <div class="bg-layer-hex" style="color: #625E53;">#2A2823</div>
+          </div>
+          <div class="bg-layer" style="background: #33312B;">
+            <div class="bg-layer-name" style="color: #B0AA9D;">Hover</div>
+            <div class="bg-layer-token" style="color: #8A8579;">bg-hover</div>
+            <div class="bg-layer-hex" style="color: #8A8579;">#33312B</div>
+          </div>
+          <div class="bg-layer" style="background: #3D3A33;">
+            <div class="bg-layer-name" style="color: #B0AA9D;">Active</div>
+            <div class="bg-layer-token" style="color: #8A8579;">bg-active</div>
+            <div class="bg-layer-hex" style="color: #8A8579;">#3D3A33</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Text hierarchy -->
+      <div class="color-group">
+        <div class="color-group-title">Text Hierarchy</div>
+        <div style="display: flex; flex-direction: column; gap: 24px; padding: 40px; background: var(--bg-surface); border-radius: var(--radius-lg); border: 1px solid var(--border-subtle);">
+          <div style="display: flex; align-items: center; gap: 24px;">
+            <div style="width: 24px; height: 24px; border-radius: 4px; background: var(--text-primary); flex-shrink: 0;"></div>
+            <div>
+              <div style="font-size: 16px; color: var(--text-primary);">Primary text for headings and emphasis</div>
+              <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-top: 2px;">text-primary</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 24px;">
+            <div style="width: 24px; height: 24px; border-radius: 4px; background: var(--text-secondary); flex-shrink: 0;"></div>
+            <div>
+              <div style="font-size: 16px; color: var(--text-secondary);">Secondary text for body content</div>
+              <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-top: 2px;">text-secondary</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 24px;">
+            <div style="width: 24px; height: 24px; border-radius: 4px; background: var(--text-tertiary); flex-shrink: 0;"></div>
+            <div>
+              <div style="font-size: 16px; color: var(--text-tertiary);">Tertiary text for secondary information</div>
+              <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-top: 2px;">text-tertiary</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 24px;">
+            <div style="width: 24px; height: 24px; border-radius: 4px; background: var(--text-muted); flex-shrink: 0;"></div>
+            <div>
+              <div style="font-size: 16px; color: var(--text-muted);">Muted text for placeholders and disabled states</div>
+              <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-top: 2px;">text-muted</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Semantic -->
+      <div class="color-group">
+        <div class="color-group-title">Semantic</div>
+        <div class="semantic-colors">
+          <div class="semantic-color" style="background: var(--bg-surface);">
+            <div class="semantic-color-bar" style="background: var(--color-success);"></div>
+            <div class="semantic-color-body">
+              <div class="semantic-color-bg" style="background: var(--color-success-bg); color: var(--color-success);">Saved.</div>
+              <div class="semantic-color-name">Success</div>
+              <div class="semantic-color-hex">fg: var(--color-success)<br>bg: var(--color-success-bg)</div>
+            </div>
+          </div>
+          <div class="semantic-color" style="background: var(--bg-surface);">
+            <div class="semantic-color-bar" style="background: var(--color-warning);"></div>
+            <div class="semantic-color-body">
+              <div class="semantic-color-bg" style="background: var(--color-warning-bg); color: var(--color-warning);">Workspace limit reached.</div>
+              <div class="semantic-color-name">Warning</div>
+              <div class="semantic-color-hex">fg: var(--color-warning)<br>bg: var(--color-warning-bg)</div>
+            </div>
+          </div>
+          <div class="semantic-color" style="background: var(--bg-surface);">
+            <div class="semantic-color-bar" style="background: var(--color-error);"></div>
+            <div class="semantic-color-body">
+              <div class="semantic-color-bg" style="background: var(--color-error-bg); color: var(--color-error);">Could not connect.</div>
+              <div class="semantic-color-name">Error</div>
+              <div class="semantic-color-hex">fg: var(--color-error)<br>bg: var(--color-error-bg)</div>
+            </div>
+          </div>
+          <div class="semantic-color" style="background: var(--bg-surface);">
+            <div class="semantic-color-bar" style="background: var(--color-info);"></div>
+            <div class="semantic-color-body">
+              <div class="semantic-color-bg" style="background: var(--color-info-bg); color: var(--color-info);">3 entries updated.</div>
+              <div class="semantic-color-name">Info</div>
+              <div class="semantic-color-hex">fg: var(--color-info)<br>bg: var(--color-info-bg)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gray scale -->
+      <div class="color-group">
+        <div class="color-group-title">Warm Gray Scale</div>
+        <div class="gray-scale">
+          <div class="gray-step" style="background: #0C0B0A;">
+            <div class="gray-step-label" style="color: #625E53;">950</div>
+            <div class="gray-step-hex" style="color: #49463D;">#0C0B0A</div>
+          </div>
+          <div class="gray-step" style="background: #141310;">
+            <div class="gray-step-label" style="color: #625E53;">900</div>
+            <div class="gray-step-hex" style="color: #49463D;">#141310</div>
+          </div>
+          <div class="gray-step" style="background: #1A1916;">
+            <div class="gray-step-label" style="color: #625E53;">850</div>
+            <div class="gray-step-hex" style="color: #49463D;">#1A1916</div>
+          </div>
+          <div class="gray-step" style="background: #21201C;">
+            <div class="gray-step-label" style="color: #8A8579;">800</div>
+            <div class="gray-step-hex" style="color: #625E53;">#21201C</div>
+          </div>
+          <div class="gray-step" style="background: #2A2823;">
+            <div class="gray-step-label" style="color: #8A8579;">750</div>
+            <div class="gray-step-hex" style="color: #625E53;">#2A2823</div>
+          </div>
+          <div class="gray-step" style="background: #33312B;">
+            <div class="gray-step-label" style="color: #B0AA9D;">700</div>
+            <div class="gray-step-hex" style="color: #8A8579;">#33312B</div>
+          </div>
+          <div class="gray-step" style="background: #49463D;">
+            <div class="gray-step-label" style="color: #B0AA9D;">600</div>
+            <div class="gray-step-hex" style="color: #8A8579;">#49463D</div>
+          </div>
+          <div class="gray-step" style="background: #625E53;">
+            <div class="gray-step-label" style="color: #D1CBBD;">500</div>
+            <div class="gray-step-hex" style="color: #B0AA9D;">#625E53</div>
+          </div>
+          <div class="gray-step" style="background: #8A8579;">
+            <div class="gray-step-label" style="color: #E8E3D8;">400</div>
+            <div class="gray-step-hex" style="color: #D1CBBD;">#8A8579</div>
+          </div>
+          <div class="gray-step" style="background: #B0AA9D;">
+            <div class="gray-step-label" style="color: #21201C;">300</div>
+            <div class="gray-step-hex" style="color: #49463D;">#B0AA9D</div>
+          </div>
+          <div class="gray-step" style="background: #D1CBBD;">
+            <div class="gray-step-label" style="color: #21201C;">200</div>
+            <div class="gray-step-hex" style="color: #49463D;">#D1CBBD</div>
+          </div>
+          <div class="gray-step" style="background: #E8E3D8;">
+            <div class="gray-step-label" style="color: #21201C;">100</div>
+            <div class="gray-step-hex" style="color: #49463D;">#E8E3D8</div>
+          </div>
+          <div class="gray-step" style="background: #F5F2EB;">
+            <div class="gray-step-label" style="color: #21201C;">50</div>
+            <div class="gray-step-hex" style="color: #8A8579;">#F5F2EB</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Spacing -->
+    <section class="section" id="spacing">
+      <div class="section-label">Spacing</div>
+      <h2 class="section-title">Room to breathe</h2>
+      <p class="section-desc">
+        Macro spacing follows the 여백 principle &mdash; generous emptiness between sections.
+        Micro spacing follows a systematic scale.
+      </p>
+
+      <div class="spacing-scale">
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">4px</div>
+            <div class="spacing-token">space-1</div>
+          </div>
+          <div class="spacing-bar" style="width: 4px;"></div>
+          <div class="spacing-label">Tight internal</div>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">8px</div>
+            <div class="spacing-token">space-2</div>
+          </div>
+          <div class="spacing-bar" style="width: 8px;"></div>
+          <div class="spacing-label">Default internal</div>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">12px</div>
+            <div class="spacing-token">space-3</div>
+          </div>
+          <div class="spacing-bar" style="width: 12px;"></div>
+          <div class="spacing-label">Compact gaps</div>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">16px</div>
+            <div class="spacing-token">space-4</div>
+          </div>
+          <div class="spacing-bar" style="width: 16px;"></div>
+          <div class="spacing-label">Standard element</div>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">24px</div>
+            <div class="spacing-token">space-6</div>
+          </div>
+          <div class="spacing-bar" style="width: 24px;"></div>
+          <div class="spacing-label">Group spacing</div>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">32px</div>
+            <div class="spacing-token">space-8</div>
+          </div>
+          <div class="spacing-bar" style="width: 32px;"></div>
+          <div class="spacing-label">Section padding</div>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">48px</div>
+            <div class="spacing-token">space-12</div>
+          </div>
+          <div class="spacing-bar" style="width: 48px;"></div>
+          <div class="spacing-label">Section gaps</div>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">64px</div>
+            <div class="spacing-token">space-16</div>
+          </div>
+          <div class="spacing-bar" style="width: 64px;"></div>
+          <div class="spacing-label">Major section separation</div>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">96px</div>
+            <div class="spacing-token">space-24</div>
+          </div>
+          <div class="spacing-bar" style="width: 96px;"></div>
+          <div class="spacing-label">Page-level breathing</div>
+        </div>
+        <div class="spacing-row">
+          <div class="spacing-meta">
+            <div class="spacing-value">128px</div>
+            <div class="spacing-token">space-32</div>
+          </div>
+          <div class="spacing-bar" style="width: 128px;"></div>
+          <div class="spacing-label">Hero / display</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Radius & Animation -->
+    <section class="section" id="motion">
+      <div class="section-label">Shape & Motion</div>
+      <h2 class="section-title">The gentle curve of a ceramic bowl</h2>
+      <p class="section-desc">
+        Not sharp (too cold), not round (too soft). Animations decelerate naturally,
+        like footsteps slowing on the 1-degree inclined floor of the 사유의 방.
+      </p>
+
+      <!-- Radius -->
+      <div class="color-group">
+        <div class="color-group-title">Border Radius</div>
+        <div class="radius-samples">
+          <div class="radius-sample">
+            <div class="radius-box" style="border-radius: 6px;"></div>
+            <div class="radius-label">6px</div>
+            <div class="radius-name">Small</div>
+          </div>
+          <div class="radius-sample">
+            <div class="radius-box" style="border-radius: 8px;"></div>
+            <div class="radius-label">8px</div>
+            <div class="radius-name">Medium</div>
+          </div>
+          <div class="radius-sample">
+            <div class="radius-box" style="border-radius: 12px;"></div>
+            <div class="radius-label">12px</div>
+            <div class="radius-name">Large</div>
+          </div>
+          <div class="radius-sample">
+            <div class="radius-box" style="border-radius: 16px;"></div>
+            <div class="radius-label">16px</div>
+            <div class="radius-name">XL</div>
+          </div>
+          <div class="radius-sample">
+            <div class="radius-box" style="border-radius: 50%;"></div>
+            <div class="radius-label">50%</div>
+            <div class="radius-name">Full</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Animation demos -->
+      <div class="color-group">
+        <div class="color-group-title">Animation</div>
+        <div class="animation-demos">
+          <div class="animation-demo">
+            <div class="animation-demo-label">Breathing</div>
+            <div class="breathing-dot"></div>
+            <div class="animation-demo-sublabel">Loading states<br>4s ease-in-out infinite</div>
+          </div>
+          <div class="animation-demo">
+            <div class="animation-demo-label">Hover Reveal</div>
+            <div class="hover-reveal">Begin</div>
+            <div class="animation-demo-sublabel">Interactive elements<br>300ms ease-out</div>
+          </div>
+          <div class="animation-demo">
+            <div class="animation-demo-label">Fade Shift</div>
+            <div class="fade-shift"></div>
+            <div class="animation-demo-sublabel">Page transitions<br>Fade + vertical shift</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Components -->
+    <section class="section" id="components">
+      <div class="section-label">Components</div>
+      <h2 class="section-title">Elements in context</h2>
+      <p class="section-desc">
+        Every component follows the same principles: warmth, restraint, quiet confidence.
+      </p>
+
+      <div class="component-grid">
+        <!-- Buttons -->
+        <div class="component-card">
+          <div class="component-card-title">Buttons</div>
+          <div class="btn-group" style="margin-bottom: 24px;">
+            <button class="btn btn-primary">Begin</button>
+            <button class="btn btn-secondary">Cancel</button>
+            <button class="btn btn-ghost">Learn more</button>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" style="opacity: 0.5; cursor: not-allowed;">Disabled</button>
+            <button class="btn btn-secondary" style="border-color: var(--sayou-gold); color: var(--sayou-gold);">Accent</button>
+          </div>
+        </div>
+
+        <!-- Inputs -->
+        <div class="component-card">
+          <div class="component-card-title">Inputs</div>
+          <div class="input-group">
+            <div>
+              <label class="input-label">Workspace name</label>
+              <input class="input-field" type="text" placeholder="Enter a name" value="Research notes">
+            </div>
+            <div>
+              <label class="input-label">Description</label>
+              <input class="input-field" type="text" placeholder="Optional description">
+            </div>
+          </div>
+        </div>
+
+        <!-- Card -->
+        <div class="component-card">
+          <div class="component-card-title">Card</div>
+          <div class="demo-card">
+            <div class="demo-card-eyebrow">Workspace</div>
+            <div class="demo-card-title">Research observations</div>
+            <div class="demo-card-body">A quiet space for storing and reflecting on knowledge gathered from multiple sources.</div>
+            <div class="demo-card-meta">12 entries &middot; Updated 2h ago</div>
+          </div>
+        </div>
+
+        <!-- Alerts -->
+        <div class="component-card">
+          <div class="component-card-title">Alerts</div>
+          <div class="alert-stack">
+            <div class="alert alert-success"><div class="alert-dot"></div>Workspace created.</div>
+            <div class="alert alert-warning"><div class="alert-dot"></div>Storage limit approaching.</div>
+            <div class="alert alert-error"><div class="alert-dot"></div>Could not connect to database.</div>
+            <div class="alert alert-info"><div class="alert-dot"></div>3 new entries available.</div>
+          </div>
+        </div>
+
+        <!-- Code block -->
+        <div class="component-card" style="grid-column: 1 / -1;">
+          <div class="component-card-title">Code</div>
+          <div class="code-block"><span class="code-comment"># Store knowledge through MCP</span>
+<span class="code-key">from</span> sayou <span class="code-key">import</span> Workspace
+
+workspace = Workspace(<span class="code-string">"research"</span>)
+workspace.store(
+    <span class="code-key">key</span>=<span class="code-string">"competitor-analysis"</span>,
+    <span class="code-key">value</span>=observations,
+    <span class="code-key">metadata</span>={<span class="code-string">"source"</span>: <span class="code-string">"agent-discovery"</span>, <span class="code-string">"confidence"</span>: <span class="code-value">0.92</span>}
+)
+
+<span class="code-comment"># Retrieve with reflection</span>
+insights = workspace.query(<span class="code-string">"What patterns emerge from recent observations?"</span>)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Voice & Tone -->
+    <section class="section" id="voice">
+      <div class="section-label">Voice & Tone</div>
+      <h2 class="section-title">Say less. Mean more.</h2>
+      <p class="section-desc">
+        Quiet confidence. Intellectual warmth. Restraint.
+        sayou does not shout, persuade, or perform urgency.
+        It states clearly and trusts the reader.
+      </p>
+
+      <div class="voice-grid">
+        <div class="voice-cell header">Do</div>
+        <div class="voice-cell header">Avoid</div>
+
+        <div class="voice-cell do">
+          <div class="voice-context">Call to action</div>
+          "Begin"
+        </div>
+        <div class="voice-cell dont">
+          <div class="voice-context">Call to action</div>
+          "Get started now!"
+        </div>
+
+        <div class="voice-cell do">
+          <div class="voice-context">Empty state</div>
+          "Nothing here yet."
+        </div>
+        <div class="voice-cell dont">
+          <div class="voice-context">Empty state</div>
+          "Looks like you haven't added anything!"
+        </div>
+
+        <div class="voice-cell do">
+          <div class="voice-context">Success</div>
+          "Saved."
+        </div>
+        <div class="voice-cell dont">
+          <div class="voice-context">Success</div>
+          "Awesome! Your changes have been saved!"
+        </div>
+
+        <div class="voice-cell do">
+          <div class="voice-context">Error</div>
+          "Could not connect to the database."
+        </div>
+        <div class="voice-cell dont">
+          <div class="voice-context">Error</div>
+          "Oops! Something went wrong. Please try again."
+        </div>
+
+        <div class="voice-cell do">
+          <div class="voice-context">Onboarding</div>
+          "sayou stores and surfaces knowledge for your agents."
+        </div>
+        <div class="voice-cell dont">
+          <div class="voice-context">Onboarding</div>
+          "Welcome to sayou! The ultimate knowledge platform!"
+        </div>
+      </div>
+    </section>
+
+    <!-- Wordmark -->
+    <section class="section" id="wordmark">
+      <div class="section-label">Wordmark</div>
+      <h2 class="section-title">Always lowercase. Always light.</h2>
+      <p class="section-desc">
+        Set in Cormorant Garamond Light (300). Korean companion in Noto Serif KR Light.
+        Never bold. Never decorated. Never loud.
+      </p>
+
+      <div class="wordmark-display">
+        <div class="wordmark-variant wv-dark">
+          <div>
+            <div class="wordmark-variant-word">sayou</div>
+            <div class="wordmark-variant-kr">사유</div>
+          </div>
+          <div class="wordmark-variant-label">On dark</div>
+        </div>
+        <div class="wordmark-variant wv-light">
+          <div>
+            <div class="wordmark-variant-word">sayou</div>
+            <div class="wordmark-variant-kr">사유</div>
+          </div>
+          <div class="wordmark-variant-label">On light</div>
+        </div>
+        <div class="wordmark-variant wv-gold">
+          <div>
+            <div class="wordmark-variant-word">sayou</div>
+            <div class="wordmark-variant-kr">사유</div>
+          </div>
+          <div class="wordmark-variant-label">Brand accent</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-brand">sayou</div>
+      <div class="footer-sub">사유 &mdash; 深く考える空間</div>
+    </footer>
+
+  </main>
+
+  <script>
+    // Theme toggle
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme');
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      document.getElementById('theme-label').textContent =
+        next === 'dark' ? 'Light mode' : 'Dark mode';
+    }
+
+    // Nav scroll effect
+    const nav = document.getElementById('nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 60);
+    });
+  </script>
+
+</body>
+</html>

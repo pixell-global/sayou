@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "sayou": {
+      "command": "sayou",
+      "env": {
+        "SAYOU_DATABASE_URL": "mysql+aiomysql://vivid_dev:YOUR_PASSWORD@database-3.cmkyt9c4u4iq.us-east-2.rds.amazonaws.com:3306/sayou_dev",
+        "SAYOU_S3_BUCKET_NAME": "pixell-agents",
+        "SAYOU_S3_REGION": "us-east-2",
+        "SAYOU_S3_ACCESS_KEY_ID": "YOUR_ACCESS_KEY",
+        "SAYOU_S3_SECRET_ACCESS_KEY": "YOUR_SECRET_KEY",
+        "SAYOU_ORG_ID": "your-org-uuid",
+        "SAYOU_USER_ID": "your-user-uuid",
+        "SAYOU_WORKSPACE_SLUG": "default"
+      }
+    }
+  }
+}
