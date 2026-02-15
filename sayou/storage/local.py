@@ -21,6 +21,7 @@ class LocalStorage(StorageService):
         org_id: str,
         workspace_id: str,
         version_id: str,
+        content_type: str = "text/markdown",
     ) -> tuple[str, str, int, str]:
         """Write content to local filesystem."""
         s3_key = self.generate_key(org_id, workspace_id, version_id)

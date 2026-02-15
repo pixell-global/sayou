@@ -64,6 +64,7 @@ class StorageService:
         org_id: str,
         workspace_id: str,
         version_id: str,
+        content_type: str = "text/markdown",
     ) -> tuple[str, str, int, str]:
         """Upload content and return (s3_key, bucket, size_bytes, content_hash)."""
         s3_key = self.generate_key(org_id, workspace_id, version_id)
@@ -75,7 +76,7 @@ class StorageService:
             Bucket=self.bucket,
             Key=s3_key,
             Body=content,
-            ContentType="text/markdown",
+            ContentType=content_type,
         )
 
         return s3_key, self.bucket, size_bytes, content_hash

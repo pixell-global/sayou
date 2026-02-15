@@ -36,7 +36,8 @@ class InMemoryStorage(StorageService):
         self._client_cm = None
 
     async def upload_version(
-        self, content: bytes, org_id: str, workspace_id: str, version_id: str
+        self, content: bytes, org_id: str, workspace_id: str, version_id: str,
+        content_type: str = "text/markdown",
     ) -> tuple[str, str, int, str]:
         s3_key = self.generate_key(org_id, workspace_id, version_id)
         content_hash = self.calculate_checksum(content)

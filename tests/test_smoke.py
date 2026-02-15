@@ -240,10 +240,10 @@ async def test_smoke_full_cycle(smoke_env):
 
 @pytest.mark.asyncio
 async def test_smoke_mcp_tools():
-    """create_server() exposes 6 tools with correct names and schemas."""
+    """create_server() exposes 17 tools with correct names and schemas."""
     from sayou.server import create_server
 
-    server = create_server()
+    server, ws = create_server()
     tools = await server.list_tools()
 
     tool_names = {t.name for t in tools}
@@ -254,8 +254,19 @@ async def test_smoke_mcp_tools():
         "workspace_search",
         "workspace_delete",
         "workspace_history",
+        "workspace_glob",
+        "workspace_grep",
+        "workspace_audit",
+        "workspace_move",
+        "workspace_copy",
+        "workspace_diff",
+        "workspace_read_section",
+        "workspace_kv_get",
+        "workspace_kv_set",
+        "workspace_kv_delete",
+        "workspace_kv_list",
     }
-    assert tool_names == expected, f"Tool mismatch. Missing: {expected - tool_names}"
+    assert tool_names == expected, f"Tool mismatch. Missing: {expected - tool_names}, Extra: {tool_names - expected}"
 
     tool_map = {t.name: t for t in tools}
 
@@ -278,3 +289,57 @@ async def test_smoke_mcp_tools():
     history_schema = tool_map["workspace_history"].inputSchema
     assert "path" in history_schema["properties"]
     assert "limit" in history_schema["properties"]
+
+    # workspace_glob has pattern
+    glob_schema = tool_map["workspace_glob"].inputSchema
+    assert "pattern" in glob_schema["properties"]
+
+    # workspace_grep has query + path_pattern
+    grep_schema = tool_map["workspace_grep"].inputSchema
+    assert "query" in grep_schema["properties"]
+    assert "path_pattern" in grep_schema["properties"]
+
+    # workspace_audit has optional filters
+    audit_schema = tool_map["workspace_audit"].inputSchema
+    assert "action" in audit_schema["properties"]
+    assert "agent_id" in audit_schema["properties"]
+    assert "limit" in audit_schema["properties"]
+
+    # workspace_move requires source_path + dest_path
+    move_schema = tool_map["workspace_move"].inputSchema
+    assert "source_path" in move_schema["properties"]
+    assert "dest_path" in move_schema["properties"]
+
+    # workspace_copy requires source_path + dest_path
+    copy_schema = tool_map["workspace_copy"].inputSchema
+    assert "source_path" in copy_schema["properties"]
+    assert "dest_path" in copy_schema["properties"]
+
+    # workspace_diff requires path + version_a + version_b
+    diff_schema = tool_map["workspace_diff"].inputSchema
+    assert "path" in diff_schema["properties"]
+    assert "version_a" in diff_schema["properties"]
+    assert "version_b" in diff_schema["properties"]
+
+    # workspace_read_section requires path + line_start + line_end
+    section_schema = tool_map["workspace_read_section"].inputSchema
+    assert "path" in section_schema["properties"]
+    assert "line_start" in section_schema["properties"]
+    assert "line_end" in section_schema["properties"]
+
+    # workspace_kv_get requires key
+    kv_get_schema = tool_map["workspace_kv_get"].inputSchema
+    assert "key" in kv_get_schema["properties"]
+
+    # workspace_kv_set requires key + value
+    kv_set_schema = tool_map["workspace_kv_set"].inputSchema
+    assert "key" in kv_set_schema["properties"]
+    assert "value" in kv_set_schema["properties"]
+
+    # workspace_kv_delete requires key
+    kv_del_schema = tool_map["workspace_kv_delete"].inputSchema
+    assert "key" in kv_del_schema["properties"]
+
+    # workspace_kv_list has optional prefix
+    kv_list_schema = tool_map["workspace_kv_list"].inputSchema
+    assert "prefix" in kv_list_schema["properties"]

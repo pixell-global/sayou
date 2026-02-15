@@ -62,3 +62,43 @@ def generate_folder_index(folder_path: str, files: list[SayouFile]) -> str:
     lines.append("")
     lines.append(f"*{len(files)} files*")
     return "\n".join(lines)
+
+
+def generate_root_index(
+    subfolder_stats: list[dict], root_files: list[SayouFile], max_chars: int = 2000
+) -> str:
+    """Generate a compressed root index showing top-level folders and files.
+
+    Returns a markdown table capped at max_chars (~500 tokens).
+    subfolder_stats: list of {"folder": str, "file_count": int, "last_updated": datetime|None}
+    """
+    lines = ["# /", ""]
+
+    if subfolder_stats:
+        lines.append("| Folder | Files | Last Updated |")
+        lines.append("| ------ | ----- | ------------ |")
+        for stat in subfolder_stats:
+            updated = ""
+            if stat.get("last_updated"):
+                updated = stat["last_updated"].strftime("%Y-%m-%d %H:%M")
+            lines.append(f"| {stat['folder']}/ | {stat['file_count']} | {updated} |")
+        lines.append("")
+
+    if root_files:
+        lines.append("| File | Updated |")
+        lines.append("| ---- | ------- |")
+        for f in root_files:
+            updated = f.updated_at.strftime("%Y-%m-%d %H:%M") if f.updated_at else ""
+            lines.append(f"| {f.filename} | {updated} |")
+        lines.append("")
+
+    total_files = sum(s["file_count"] for s in subfolder_stats) + len(root_files)
+    lines.append(
+        f"*{len(subfolder_stats)} folders, {len(root_files)} root files, "
+        f"{total_files} total files*"
+    )
+
+    result = "\n".join(lines)
+    if len(result) > max_chars:
+        result = result[:max_chars - 20] + "\n\n*(truncated)*"
+    return result

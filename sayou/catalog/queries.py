@@ -1,6 +1,8 @@
 import json
 import re
 
+from datetime import datetime
+
 from sqlalchemy import and_, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +10,7 @@ from sayou.catalog.models import (
     SayouFile,
     SayouFileVersion,
     SayouIndexCache,
+    SayouKVEntry,
     SayouMutationLog,
     SayouWorkspace,
     SayouWorkspaceMember,
@@ -227,6 +230,131 @@ async def list_subfolders(
                     subfolders.add(parts[0] + "/")
 
     return sorted(subfolders)
+
+
+async def get_subfolder_stats(
+    session: AsyncSession, org_id: str, workspace_id: str, parent_folder: str = "/"
+) -> list[dict]:
+    """Get stats (file_count, last_updated) for each immediate subfolder.
+
+    Returns list of {"folder": str, "file_count": int, "last_updated": datetime|None}.
+    """
+    # Get all files in the workspace that are not deleted
+    result = await session.execute(
+        select(
+            SayouFile.folder_path,
+            func.count(SayouFile.id).label("file_count"),
+            func.max(SayouFile.updated_at).label("last_updated"),
+        ).where(
+            and_(
+                SayouFile.org_id == org_id,
+                SayouFile.workspace_id == workspace_id,
+                SayouFile.deleted_at.is_(None),
+            )
+        ).group_by(SayouFile.folder_path)
+    )
+    rows = result.all()
+
+    # Aggregate into immediate subfolders of parent_folder
+    folder_stats: dict[str, dict] = {}
+    for folder_path, file_count, last_updated in rows:
+        if parent_folder == "/":
+            # Top-level: extract first path segment
+            parts = folder_path.strip("/").split("/")
+            if not parts or not parts[0]:
+                # Root-level files (folder_path="/") — skip, handled separately
+                continue
+            top_folder = parts[0]
+        else:
+            prefix = parent_folder.rstrip("/") + "/"
+            if not folder_path.startswith(prefix) and folder_path != parent_folder:
+                continue
+            if folder_path == parent_folder:
+                continue
+            remainder = folder_path[len(prefix):]
+            parts = remainder.strip("/").split("/")
+            if not parts or not parts[0]:
+                continue
+            top_folder = parts[0]
+
+        if top_folder not in folder_stats:
+            folder_stats[top_folder] = {"folder": top_folder, "file_count": 0, "last_updated": None}
+        folder_stats[top_folder]["file_count"] += file_count
+        existing = folder_stats[top_folder]["last_updated"]
+        if last_updated and (existing is None or last_updated > existing):
+            folder_stats[top_folder]["last_updated"] = last_updated
+
+    return sorted(folder_stats.values(), key=lambda s: s["folder"])
+
+
+async def update_file_path(
+    session: AsyncSession,
+    file_id: str,
+    new_path: str,
+    new_folder_path: str,
+    new_filename: str,
+) -> None:
+    """Update the path of a file (for move operations). Catalog-only, no S3 ops."""
+    result = await session.execute(
+        select(SayouFile).where(SayouFile.id == file_id)
+    )
+    file = result.scalar_one()
+    file.path = new_path
+    file.folder_path = new_folder_path
+    file.filename = new_filename
+    await session.flush()
+
+
+async def duplicate_file(
+    session: AsyncSession,
+    source_file: SayouFile,
+    new_path: str,
+    new_folder_path: str,
+    new_filename: str,
+    created_by: str,
+) -> tuple[SayouFile, SayouFileVersion | None]:
+    """Duplicate a file record pointing to the same S3 version objects.
+
+    Creates a new file and a new version record pointing to the same S3 key.
+    Returns (new_file, new_version).
+    """
+    new_file = SayouFile(
+        id=generate_uuid(),
+        org_id=source_file.org_id,
+        workspace_id=source_file.workspace_id,
+        path=new_path,
+        folder_path=new_folder_path,
+        filename=new_filename,
+        content_type=source_file.content_type,
+        frontmatter=source_file.frontmatter,
+        content_text=source_file.content_text,
+        version_count=0,
+    )
+    session.add(new_file)
+    await session.flush()
+
+    # Copy the latest version if exists
+    if source_file.current_version_id:
+        source_version = await get_version(session, source_file.current_version_id)
+        if source_version:
+            new_version = SayouFileVersion(
+                id=generate_uuid(),
+                file_id=new_file.id,
+                version_number=1,
+                s3_key=source_version.s3_key,
+                s3_bucket=source_version.s3_bucket,
+                size_bytes=source_version.size_bytes,
+                content_hash=source_version.content_hash,
+                created_by=created_by,
+            )
+            session.add(new_version)
+            await session.flush()
+            new_file.current_version_id = new_version.id
+            new_file.version_count = 1
+            await session.flush()
+            return new_file, new_version
+
+    return new_file, None
 
 
 async def search_files_by_frontmatter(
@@ -528,3 +656,161 @@ async def log_mutation(
     session.add(log)
     await session.flush()
     return log
+
+
+async def query_mutation_log(
+    session: AsyncSession,
+    org_id: str,
+    workspace_id: str,
+    *,
+    file_path: str | None = None,
+    action: str | None = None,
+    agent_id: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = 50,
+) -> list[SayouMutationLog]:
+    """Query the mutation log with optional filters."""
+    limit = min(limit, 200)
+
+    conditions = [
+        SayouMutationLog.org_id == org_id,
+        SayouMutationLog.workspace_id == workspace_id,
+    ]
+    if file_path is not None:
+        conditions.append(SayouMutationLog.file_path == file_path)
+    if action is not None:
+        conditions.append(SayouMutationLog.action == action)
+    if agent_id is not None:
+        conditions.append(SayouMutationLog.agent_id == agent_id)
+    if since is not None:
+        conditions.append(SayouMutationLog.created_at >= since)
+    if until is not None:
+        conditions.append(SayouMutationLog.created_at <= until)
+
+    result = await session.execute(
+        select(SayouMutationLog)
+        .where(and_(*conditions))
+        .order_by(SayouMutationLog.created_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+# --- KV Store ---
+
+
+async def kv_get(
+    session: AsyncSession, org_id: str, workspace_id: str, key: str
+) -> SayouKVEntry | None:
+    """Get a KV entry, filtering out expired entries (lazy expiry)."""
+    result = await session.execute(
+        select(SayouKVEntry).where(
+            and_(
+                SayouKVEntry.org_id == org_id,
+                SayouKVEntry.workspace_id == workspace_id,
+                SayouKVEntry.key == key,
+            )
+        )
+    )
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return None
+    # Lazy expiry check
+    if entry.expires_at is not None and entry.expires_at <= datetime.utcnow():
+        await session.delete(entry)
+        await session.flush()
+        return None
+    return entry
+
+
+async def kv_set(
+    session: AsyncSession,
+    org_id: str,
+    workspace_id: str,
+    key: str,
+    value: str,
+    ttl_seconds: int | None = None,
+) -> SayouKVEntry:
+    """Set (upsert) a KV entry. value should be JSON-encoded."""
+    expires_at = None
+    if ttl_seconds is not None:
+        from datetime import timedelta
+        expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+
+    existing = await session.execute(
+        select(SayouKVEntry).where(
+            and_(
+                SayouKVEntry.org_id == org_id,
+                SayouKVEntry.workspace_id == workspace_id,
+                SayouKVEntry.key == key,
+            )
+        )
+    )
+    entry = existing.scalar_one_or_none()
+    if entry:
+        entry.value = value
+        entry.ttl_seconds = ttl_seconds
+        entry.expires_at = expires_at
+        await session.flush()
+        return entry
+
+    entry = SayouKVEntry(
+        id=generate_uuid(),
+        org_id=org_id,
+        workspace_id=workspace_id,
+        key=key,
+        value=value,
+        ttl_seconds=ttl_seconds,
+        expires_at=expires_at,
+    )
+    session.add(entry)
+    await session.flush()
+    return entry
+
+
+async def kv_delete(
+    session: AsyncSession, org_id: str, workspace_id: str, key: str
+) -> bool:
+    """Delete a KV entry. Returns True if entry existed."""
+    result = await session.execute(
+        select(SayouKVEntry).where(
+            and_(
+                SayouKVEntry.org_id == org_id,
+                SayouKVEntry.workspace_id == workspace_id,
+                SayouKVEntry.key == key,
+            )
+        )
+    )
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return False
+    await session.delete(entry)
+    await session.flush()
+    return True
+
+
+async def kv_list(
+    session: AsyncSession,
+    org_id: str,
+    workspace_id: str,
+    prefix: str | None = None,
+) -> list[SayouKVEntry]:
+    """List KV entries, optionally filtered by key prefix. Filters out expired."""
+    conditions = [
+        SayouKVEntry.org_id == org_id,
+        SayouKVEntry.workspace_id == workspace_id,
+    ]
+    if prefix:
+        conditions.append(SayouKVEntry.key.like(prefix + "%"))
+
+    # Filter out expired
+    now = datetime.utcnow()
+    conditions.append(
+        or_(SayouKVEntry.expires_at.is_(None), SayouKVEntry.expires_at > now)
+    )
+
+    result = await session.execute(
+        select(SayouKVEntry).where(and_(*conditions)).order_by(SayouKVEntry.key)
+    )
+    return list(result.scalars().all())

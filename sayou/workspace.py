@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -147,12 +148,16 @@ class Workspace:
 
     # ── Public methods ──────────────────────────────────────────────
 
-    async def write(self, path: str, content: str, *, source: str | None = None) -> dict:
-        """Write a file to the workspace."""
+    async def write(
+        self, path: str, content: str | bytes, *,
+        source: str | None = None, content_type: str | None = None,
+    ) -> dict:
+        """Write a file to the workspace. Pass bytes for binary content."""
         await self._ensure_open()
         return await self._service.write(
             self._org_id, self._user_id, self._slug, path, content,
             source=source or self._source,
+            content_type=content_type,
         )
 
     async def read(
@@ -212,4 +217,86 @@ class Workspace:
         await self._ensure_open()
         return await self._service.history(
             self._org_id, self._user_id, self._slug, path, limit=limit,
+        )
+
+    async def audit(
+        self,
+        *,
+        path: str | None = None,
+        action: str | None = None,
+        agent_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+    ) -> dict:
+        """Query the mutation audit log for the workspace."""
+        await self._ensure_open()
+        return await self._service.audit_log(
+            self._org_id, self._user_id, self._slug,
+            path=path, action=action, agent_id=agent_id,
+            since=since, until=until, limit=limit,
+        )
+
+    async def move(
+        self, source_path: str, dest_path: str, *, source: str | None = None
+    ) -> dict:
+        """Move a file to a new path."""
+        await self._ensure_open()
+        return await self._service.move(
+            self._org_id, self._user_id, self._slug, source_path, dest_path,
+            source_agent=source or self._source,
+        )
+
+    async def copy(
+        self, source_path: str, dest_path: str, *, source: str | None = None
+    ) -> dict:
+        """Copy a file to a new path."""
+        await self._ensure_open()
+        return await self._service.copy(
+            self._org_id, self._user_id, self._slug, source_path, dest_path,
+            source_agent=source or self._source,
+        )
+
+    async def diff(self, path: str, version_a: int, version_b: int) -> dict:
+        """Compare two versions of a file."""
+        await self._ensure_open()
+        return await self._service.diff(
+            self._org_id, self._user_id, self._slug, path, version_a, version_b,
+        )
+
+    async def read_section(
+        self, path: str, *, line_start: int, line_end: int
+    ) -> dict:
+        """Read a specific line range from a file."""
+        await self._ensure_open()
+        return await self._service.read_section(
+            self._org_id, self._user_id, self._slug, path, line_start, line_end,
+        )
+
+    async def kv_get(self, key: str) -> dict:
+        """Get a value from the KV store."""
+        await self._ensure_open()
+        return await self._service.kv_get(
+            self._org_id, self._user_id, self._slug, key,
+        )
+
+    async def kv_set(self, key: str, value, *, ttl_seconds: int | None = None) -> dict:
+        """Set a value in the KV store."""
+        await self._ensure_open()
+        return await self._service.kv_set(
+            self._org_id, self._user_id, self._slug, key, value, ttl_seconds,
+        )
+
+    async def kv_delete(self, key: str) -> dict:
+        """Delete a key from the KV store."""
+        await self._ensure_open()
+        return await self._service.kv_delete(
+            self._org_id, self._user_id, self._slug, key,
+        )
+
+    async def kv_list(self, *, prefix: str | None = None) -> dict:
+        """List keys in the KV store."""
+        await self._ensure_open()
+        return await self._service.kv_list(
+            self._org_id, self._user_id, self._slug, prefix,
         )
