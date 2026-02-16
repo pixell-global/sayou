@@ -14,7 +14,7 @@ Databases were designed for transactions — they reduce nuance to fit a schema.
 - **Knowledge that compounds** — Append-only version history. Every change is a new version. Full audit trail and time-travel reads.
 - **Any agent can connect** — MCP server, Python library, or CLI. Optional REST API with `pip install sayou[api]`.
 
-## Quick Start (60 seconds)
+## Quick Start
 
 ### 1. Install
 ```bash
@@ -37,7 +37,105 @@ Add to `~/.claude/mcp.json`:
 }
 ```
 
-That's it. Claude Code now has persistent workspace memory.
+### 4. Verify
+
+Restart Claude Code (so it picks up the new MCP config), then run:
+```bash
+sayou status
+```
+
+You should see your workspace path, database location, and `11 tools registered`. If you see errors, jump to [Troubleshooting](#troubleshooting).
+
+## Try It
+
+Open Claude Code and paste any of these prompts. Each one triggers a different MCP tool — no setup beyond the Quick Start above.
+
+| Prompt | What happens | Tool |
+|--------|-------------|------|
+| "Save a note about our Q1 goals with status: draft" | Creates a versioned file with YAML frontmatter | `workspace_write` |
+| "What files are in my workspace?" | Lists all files and subfolders | `workspace_list` |
+| "Search for anything tagged status: draft" | Filters files by frontmatter metadata | `workspace_search` |
+| "Read the Q1 goals note" | Retrieves file content with token-budget awareness | `workspace_read` |
+| "Update the status to reviewed" | Writes a new version (old version preserved) | `workspace_write` |
+| "Show me the diff between versions" | Compares two versions with unified diff | `workspace_history` |
+| "Store a setting: theme = dark" | Saves a key-value pair (with optional TTL) | `workspace_kv` |
+| "Find all markdown files in research/" | Matches files by glob pattern | `workspace_glob` |
+| "Search file contents for the word 'budget'" | Grep-style content search with context | `workspace_grep` |
+
+Every write creates a new version. Nothing is overwritten. You can always go back.
+
+## What It Looks Like
+
+A short conversation showing sayou in action across sessions:
+
+---
+
+**You:** Research competitor pricing for our enterprise tier and save your findings.
+
+**Claude Code:** I'll research this and save my findings to the workspace.
+
+*[Uses `workspace_write` to create `research/competitor-pricing.md`]*
+
+> Saved to `research/competitor-pricing.md` with frontmatter:
+> status: draft, topic: competitor-pricing
+
+---
+
+**You** *(next day, new session):* What did we learn about competitor pricing?
+
+**Claude Code:** Let me check our workspace.
+
+*[Uses `workspace_search` with query "competitor pricing"]*
+
+> Found `research/competitor-pricing.md` (saved yesterday):
+> - Competitor A: $99/seat/month
+> - Competitor B: $149/seat/month (includes support)
+> - Competitor C: $79/seat/month (limited features)
+
+---
+
+**You:** Update the status to "reviewed" and show me the diff.
+
+**Claude Code:** *[Uses `workspace_write` to create version 2, then `workspace_history` to diff]*
+
+> ```diff
+> - status: draft
+> + status: reviewed
+> + reviewer_notes: |
+> +   Competitor B is closest to our positioning.
+> ```
+
+---
+
+The key insight: Claude Code remembered the research **across sessions** because sayou persisted it as a versioned file — not a chat message that disappears.
+
+## Setup for Other Editors
+
+### Cursor
+
+Add to `.cursor/mcp.json` in your project root:
+```json
+{
+  "mcpServers": {
+    "sayou": { "command": "sayou" }
+  }
+}
+```
+
+### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+```json
+{
+  "mcpServers": {
+    "sayou": { "command": "sayou" }
+  }
+}
+```
+
+### Any MCP-compatible client
+
+sayou is a standard MCP server. The config is always the same — just `"command": "sayou"`. Check your editor's docs for where it reads MCP server configuration.
 
 ## MCP Tools
 
@@ -164,6 +262,31 @@ Install with all backends: `pip install sayou[all]`
 |---------|--------|----------|
 | **SQLite + local disk** (default) | No config needed | Local dev, single-machine agents, MCP server |
 | **MySQL + S3** | Set `database_url`, S3 credentials | Production, multi-agent, shared workspaces |
+
+## Troubleshooting
+
+### Verify your setup
+
+```bash
+sayou status
+```
+
+This shows your workspace path, database location, storage backend, and tool count. If everything is working, you'll see `11 tools registered`.
+
+### Common issues
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| Claude Code doesn't see sayou tools | MCP config not loaded | Restart Claude Code after editing `~/.claude/mcp.json` |
+| `sayou: command not found` | Not on PATH | Run `pip install sayou` again, or use full path in MCP config: `"command": "/path/to/sayou"` |
+| `sayou status` shows 0 tools | Server didn't initialize | Run `sayou init` first, then check for errors in output |
+| Files not persisting | Wrong workspace path | Check `sayou status` for the workspace path — default is `~/.sayou/` |
+| Import errors on startup | Missing optional dependency | Install the extra you need: `pip install sayou[api]`, `sayou[s3]`, or `sayou[all]` |
+
+### Get help
+
+- [GitHub Issues](https://github.com/pixell-global/sayou/issues) — bug reports and feature requests
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — development setup and contribution guide
 
 ## What sayou is NOT
 
