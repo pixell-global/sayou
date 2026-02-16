@@ -2,6 +2,18 @@
 
 Thank you for your interest in contributing to sayou.
 
+## Branching & Pull Requests
+
+Read [docs/BRANCHING_STRATEGY.md](./docs/BRANCHING_STRATEGY.md) for the full branching strategy.
+
+**Quick version:** Branch from `main`, open a PR, get it reviewed, squash-merge. Never push directly to `main`.
+
+```bash
+git checkout -b feat/my-feature
+# make changes, commit, push
+gh pr create --title "Add my feature"
+```
+
 ## Reporting Issues
 
 Open an issue on GitHub with:
