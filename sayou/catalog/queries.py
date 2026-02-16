@@ -52,6 +52,11 @@ async def ensure_default_workspace(
     if ws is None:
         ws = await create_workspace(session, org_id, "default", "Default Workspace", user_id)
         await add_member(session, ws.id, user_id, "admin")
+    else:
+        # Ensure the current user has access
+        member = await get_membership(session, ws.id, user_id)
+        if member is None:
+            await add_member(session, ws.id, user_id, "admin")
     return ws
 
 

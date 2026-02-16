@@ -1,6 +1,9 @@
 import hashlib
 
-import aioboto3
+try:
+    import aioboto3
+except ImportError:
+    aioboto3 = None
 
 from sayou.config import settings
 
@@ -19,6 +22,11 @@ class StorageService:
         self.endpoint_url = endpoint_url or settings.s3_endpoint_url
         self.access_key_id = access_key_id or settings.s3_access_key_id
         self.secret_access_key = secret_access_key or settings.s3_secret_access_key
+        if aioboto3 is None:
+            raise ImportError(
+                "S3 storage requires additional dependencies. "
+                "Install with: pip install sayou[s3]"
+            )
         self._session = aioboto3.Session()
         self._client = None
         self._client_cm = None

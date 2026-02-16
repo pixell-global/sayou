@@ -174,6 +174,190 @@ def create_router(ws: WorkspaceService) -> APIRouter:
         except AccessDeniedError as e:
             raise HTTPException(status_code=403, detail=str(e))
 
+    # ── Schema & Auto-Metadata ──────────────────────────────────
+
+    @router.get("/workspaces/{slug}/schema")
+    async def get_schema(
+        slug: str, identity: tuple = Depends(get_identity)
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.get_schema(org_id, user_id, slug)
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    @router.post("/workspaces/{slug}/schema/refresh")
+    async def refresh_schema(
+        slug: str, identity: tuple = Depends(get_identity)
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.refresh_schema(org_id, user_id, slug)
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    @router.post("/workspaces/{slug}/generate-metadata/{path:path}")
+    async def generate_metadata(
+        slug: str, path: str, identity: tuple = Depends(get_identity)
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.generate_metadata(org_id, user_id, slug, path)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    @router.post("/workspaces/{slug}/bulk-metadata")
+    async def bulk_generate_metadata(
+        slug: str,
+        path_pattern: str | None = Query(default=None),
+        identity: tuple = Depends(get_identity),
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.bulk_generate_metadata(
+                org_id, user_id, slug, path_pattern=path_pattern,
+            )
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    # ── Semantic Search ────────────────────────────────────────────
+
+    @router.get("/workspaces/{slug}/semantic-search")
+    async def semantic_search(
+        slug: str,
+        query: str = Query(...),
+        top_k: int = Query(default=10),
+        identity: tuple = Depends(get_identity),
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.semantic_search(
+                org_id, user_id, slug, query, top_k=top_k,
+            )
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    @router.post("/workspaces/{slug}/reindex-embeddings")
+    async def reindex_embeddings(
+        slug: str, identity: tuple = Depends(get_identity)
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.reindex_embeddings(org_id, user_id, slug)
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    # ── Links / Graph ──────────────────────────────────────────────
+
+    @router.get("/workspaces/{slug}/graph")
+    async def graph_summary(
+        slug: str, identity: tuple = Depends(get_identity)
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.graph_summary(org_id, user_id, slug)
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    @router.post("/workspaces/{slug}/links")
+    async def add_link(
+        slug: str,
+        body: dict,
+        identity: tuple = Depends(get_identity),
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.add_link(
+                org_id, user_id, slug,
+                body["source_path"], body["target_path"],
+                link_type=body.get("link_type", "reference"),
+                context=body.get("context"),
+            )
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    @router.delete("/workspaces/{slug}/links")
+    async def remove_link(
+        slug: str,
+        source_path: str = Query(...),
+        target_path: str = Query(...),
+        link_type: str = Query(default="reference"),
+        identity: tuple = Depends(get_identity),
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.remove_link(
+                org_id, user_id, slug,
+                source_path, target_path, link_type=link_type,
+            )
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    @router.get("/workspaces/{slug}/traverse/{path:path}")
+    async def traverse_graph(
+        slug: str,
+        path: str,
+        depth: int = Query(default=1),
+        identity: tuple = Depends(get_identity),
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.traverse_graph(
+                org_id, user_id, slug, path, depth=depth,
+            )
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    @router.get("/workspaces/{slug}/links/{path:path}")
+    async def get_links(
+        slug: str, path: str, identity: tuple = Depends(get_identity)
+    ):
+        org_id, user_id = identity
+        try:
+            return await ws.get_links(org_id, user_id, slug, path)
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    # ── Chunks ────────────────────────────────────────────────────
+
+    @router.get("/workspaces/{slug}/chunks/{path:path}")
+    async def get_chunks(
+        slug: str, path: str,
+        chunk_index: int | None = Query(default=None),
+        identity: tuple = Depends(get_identity),
+    ):
+        org_id, user_id = identity
+        try:
+            if chunk_index is not None:
+                result = await ws.get_chunk(org_id, user_id, slug, path, chunk_index)
+            else:
+                result = await ws.get_chunks(org_id, user_id, slug, path)
+            return result
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    @router.get("/workspaces/{slug}/search-chunks")
+    async def search_chunks(
+        slug: str,
+        query: str = Query(...),
+        path_pattern: str | None = Query(default=None),
+        limit: int = Query(default=20),
+        identity: tuple = Depends(get_identity),
+    ):
+        org_id, user_id = identity
+        try:
+            result = await ws.search_chunks(
+                org_id, user_id, slug, query,
+                path_pattern=path_pattern, limit=limit,
+            )
+            return result
+        except AccessDeniedError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
     # ── File action routes (MUST come before generic {path:path}) ──
 
     @router.get("/workspaces/{slug}/history/{path:path}", response_model=HistoryResponse)

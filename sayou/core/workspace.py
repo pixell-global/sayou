@@ -36,7 +36,51 @@ from sayou.catalog.queries import (
     update_file_path,
     upsert_index_cache,
 )
+from sayou.catalog.queries_schema import (
+    delete_schema,
+    get_schema,
+    upsert_schema_field,
+)
+from sayou.catalog.queries_embeddings import (
+    delete_embeddings_for_file,
+    get_all_embeddings,
+    get_embedding_for_file,
+    upsert_embedding,
+)
+from sayou.catalog.queries_links import (
+    delete_auto_links_for_source,
+    delete_link as delete_link_query,
+    delete_links_for_source,
+    get_graph_summary,
+    get_links_from,
+    get_links_to,
+    get_neighbors,
+    update_links_on_move,
+    upsert_link,
+)
+from sayou.catalog.queries_chunks import (
+    delete_chunks_for_file,
+    get_chunk_by_index,
+    get_chunks_for_file,
+    replace_chunks_for_file,
+    search_chunks as search_chunks_query,
+)
+from sayou.core.auto_metadata import (
+    NullMetadataProvider,
+    merge_auto_metadata,
+)
+from sayou.core.chunking import get_chunker
+from sayou.core.embeddings import (
+    NullEmbeddingProvider,
+    content_hash as compute_content_hash,
+    cosine_similarity,
+    get_embedding_provider,
+    pack_embedding,
+    prepare_embedding_input,
+    unpack_embedding,
+)
 from sayou.core.frontmatter import parse_frontmatter
+from sayou.core.links import extract_links_from_frontmatter, extract_links_from_markdown, resolve_relative_path
 from sayou.core.index import generate_folder_index, generate_root_index
 from sayou.core.summarize import summarize_content
 from sayou.storage.s3 import StorageService
@@ -55,9 +99,19 @@ class FileExistsError(Exception):
 
 
 class WorkspaceService:
-    def __init__(self, storage: StorageService | None = None, _get_db=None):
+    def __init__(
+        self,
+        storage: StorageService | None = None,
+        _get_db=None,
+        embedding_provider=None,
+        metadata_provider=None,
+        auto_metadata_enabled: bool = False,
+    ):
         self.storage = storage or StorageService()
         self._custom_get_db = _get_db
+        self._embedding_provider = embedding_provider
+        self._metadata_provider = metadata_provider
+        self._auto_metadata_enabled = auto_metadata_enabled
 
     async def close(self):
         """Close underlying resources (S3 client, etc.)."""
@@ -228,6 +282,107 @@ class WorkspaceService:
             # Regenerate parent index
             await self._regenerate_index_chain(session, org_id, ws.id, folder_path)
 
+            # Auto-chunk text content
+            if is_text and body:
+                chunker = get_chunker(content_type)
+                chunk_results = chunker.chunk(body)
+                if chunk_results:
+                    chunk_dicts = [
+                        {
+                            "chunk_index": c.chunk_index,
+                            "heading": c.heading,
+                            "heading_level": c.heading_level,
+                            "content": c.content,
+                            "line_start": c.line_start,
+                            "line_end": c.line_end,
+                            "char_count": c.char_count,
+                            "token_estimate": c.token_estimate,
+                            "content_hash": c.content_hash,
+                        }
+                        for c in chunk_results
+                    ]
+                    await replace_chunks_for_file(
+                        session, org_id, ws.id, file.id, version.id, chunk_dicts
+                    )
+
+            # Auto-detect links from content and frontmatter
+            if is_text:
+                await delete_auto_links_for_source(session, org_id, ws.id, clean_path)
+                all_links = []
+                if body:
+                    all_links.extend(extract_links_from_markdown(body))
+                if frontmatter:
+                    all_links.extend(extract_links_from_frontmatter(frontmatter))
+                for link_info in all_links:
+                    target = resolve_relative_path(
+                        clean_path, link_info["target_path"]
+                    )
+                    await upsert_link(
+                        session, org_id, ws.id,
+                        source_path=clean_path,
+                        target_path=target,
+                        link_type=link_info["link_type"],
+                        auto_detected=True,
+                        context=link_info.get("context"),
+                        created_by=source or user_id,
+                    )
+
+            # Compute embedding if provider configured
+            if is_text and self._embedding_provider and not isinstance(
+                self._embedding_provider, NullEmbeddingProvider
+            ):
+                try:
+                    embed_input = prepare_embedding_input(frontmatter, body or "")
+                    c_hash = compute_content_hash(embed_input)
+                    # Check if content changed (skip re-embed)
+                    existing_emb = await get_embedding_for_file(
+                        session, file.id,
+                        self._embedding_provider.provider_name,
+                        self._embedding_provider.model_name,
+                    )
+                    if not existing_emb or existing_emb.content_hash != c_hash:
+                        vector = await self._embedding_provider.embed(embed_input)
+                        if vector:
+                            await upsert_embedding(
+                                session, org_id, ws.id, file.id, version.id,
+                                provider=self._embedding_provider.provider_name,
+                                model=self._embedding_provider.model_name,
+                                dimensions=self._embedding_provider.dimensions,
+                                embedding=pack_embedding(vector),
+                                content_hash=c_hash,
+                            )
+                except Exception:
+                    pass  # Embedding failure never blocks writes
+
+            # Auto-metadata generation (non-blocking)
+            if (
+                is_text and body
+                and self._auto_metadata_enabled
+                and self._metadata_provider
+                and not isinstance(self._metadata_provider, NullMetadataProvider)
+            ):
+                try:
+                    # Get existing schema for consistency
+                    schema_entries = await get_schema(session, org_id, ws.id)
+                    schema_dicts = [
+                        {
+                            "field_name": s.field_name,
+                            "sample_values": json.loads(s.sample_values) if s.sample_values else [],
+                        }
+                        for s in schema_entries
+                    ]
+                    auto_meta = await self._metadata_provider.generate(
+                        body, existing_schema=schema_dicts
+                    )
+                    if auto_meta:
+                        merged = merge_auto_metadata(frontmatter or {}, auto_meta)
+                        await update_file_current_version(
+                            session, file.id, version.id, new_version_number,
+                            frontmatter=merged,
+                        )
+                except Exception:
+                    pass  # Auto-metadata failure never blocks writes
+
         return {
             "path": clean_path,
             "version_number": new_version_number,
@@ -371,6 +526,7 @@ class WorkspaceService:
                     "filename": f.filename,
                     "version_count": f.version_count,
                     "frontmatter": json.loads(f.frontmatter) if f.frontmatter else {},
+                    "updated_at": f.updated_at.isoformat() if f.updated_at else None,
                 }
                 for f in files
             ]
@@ -449,6 +605,7 @@ class WorkspaceService:
                     "filename": f.filename,
                     "version_count": f.version_count,
                     "frontmatter": json.loads(f.frontmatter) if f.frontmatter else {},
+                    "updated_at": f.updated_at.isoformat() if f.updated_at else None,
                 }
                 for f in files
             ]
@@ -526,6 +683,9 @@ class WorkspaceService:
                 raise FileNotFoundError(f"File not found: {clean_path}")
 
             await soft_delete_file(session, file.id)
+            await delete_chunks_for_file(session, file.id)
+            await delete_embeddings_for_file(session, file.id)
+            await delete_links_for_source(session, org_id, ws.id, clean_path)
             await log_mutation(session, org_id, ws.id, source, "delete", clean_path)
             await self._regenerate_index_chain(session, org_id, ws.id, folder_path)
 
@@ -560,6 +720,7 @@ class WorkspaceService:
                 raise FileExistsError(f"Destination already exists: {clean_dst}")
 
             await update_file_path(session, file.id, dst_clean, dst_folder, dst_filename)
+            await update_links_on_move(session, org_id, ws.id, clean_src, clean_dst)
             await log_mutation(
                 session, org_id, ws.id, source_agent, "move",
                 f"{clean_src} -> {clean_dst}",
@@ -743,6 +904,596 @@ class WorkspaceService:
             ]
 
         return {"entries": entry_list, "total": len(entry_list)}
+
+    # ── Chunks ─────────────────────────────────────────────────────
+
+    async def get_chunks(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        path: str,
+    ) -> dict:
+        """Get chunk outline for a file."""
+        clean_path = path.strip("/")
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "reader")
+
+            file = await get_file_by_path(session, org_id, ws.id, clean_path)
+            if file is None:
+                raise FileNotFoundError(f"File not found: {clean_path}")
+
+            chunks = await get_chunks_for_file(session, file.id)
+
+            chunk_list = [
+                {
+                    "chunk_index": c.chunk_index,
+                    "heading": c.heading,
+                    "heading_level": c.heading_level,
+                    "line_start": c.line_start,
+                    "line_end": c.line_end,
+                    "char_count": c.char_count,
+                    "token_estimate": c.token_estimate,
+                }
+                for c in chunks
+            ]
+
+        return {"path": clean_path, "chunks": chunk_list, "total": len(chunk_list)}
+
+    async def get_chunk(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        path: str,
+        chunk_index: int,
+    ) -> dict:
+        """Read a specific chunk by index."""
+        clean_path = path.strip("/")
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "reader")
+
+            file = await get_file_by_path(session, org_id, ws.id, clean_path)
+            if file is None:
+                raise FileNotFoundError(f"File not found: {clean_path}")
+
+            chunk = await get_chunk_by_index(session, file.id, chunk_index)
+            if chunk is None:
+                raise FileNotFoundError(
+                    f"Chunk {chunk_index} not found for: {clean_path}"
+                )
+
+        return {
+            "path": clean_path,
+            "chunk_index": chunk.chunk_index,
+            "heading": chunk.heading,
+            "heading_level": chunk.heading_level,
+            "content": chunk.content,
+            "line_start": chunk.line_start,
+            "line_end": chunk.line_end,
+            "char_count": chunk.char_count,
+            "token_estimate": chunk.token_estimate,
+        }
+
+    async def search_chunks(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        query: str,
+        path_pattern: str | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """Search chunks by content."""
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "reader")
+
+            results = await search_chunks_query(
+                session, org_id, ws.id, query,
+                path_pattern=path_pattern, limit=limit,
+            )
+
+            result_list = [
+                {
+                    "path": r["path"],
+                    "filename": r["filename"],
+                    "chunk_index": r["chunk"].chunk_index,
+                    "heading": r["chunk"].heading,
+                    "line_start": r["chunk"].line_start,
+                    "line_end": r["chunk"].line_end,
+                    "token_estimate": r["chunk"].token_estimate,
+                    "content_preview": r["chunk"].content[:200],
+                }
+                for r in results
+            ]
+
+        return {"query": query, "results": result_list, "total": len(result_list)}
+
+    # ── Semantic Search ─────────────────────────────────────────────
+
+    async def semantic_search(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        query: str,
+        top_k: int = 10,
+    ) -> dict:
+        """Search files by meaning using vector embeddings.
+
+        Falls back to text search if no embedding provider configured.
+        """
+        if not self._embedding_provider or isinstance(
+            self._embedding_provider, NullEmbeddingProvider
+        ):
+            # Fallback to fulltext search
+            return await self.search(
+                org_id, user_id, workspace_slug, query=query
+            )
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "reader")
+
+            # Embed the query
+            query_vector = await self._embedding_provider.embed(query)
+            if not query_vector:
+                return {"results": [], "total": 0, "fallback": True}
+
+            # Get all embeddings for this workspace
+            embeddings = await get_all_embeddings(
+                session, org_id, ws.id,
+                provider=self._embedding_provider.provider_name,
+                model=self._embedding_provider.model_name,
+            )
+
+            if not embeddings:
+                return {"results": [], "total": 0, "fallback": False}
+
+            # Compute similarities
+            scored = []
+            file_ids = {e.file_id for e in embeddings}
+            # Batch fetch file info
+            from sqlalchemy import select as sa_select
+            from sayou.catalog.models import SayouFile
+            file_result = await session.execute(
+                sa_select(SayouFile).where(
+                    SayouFile.id.in_(file_ids),
+                    SayouFile.deleted_at.is_(None),
+                )
+            )
+            file_map = {f.id: f for f in file_result.scalars().all()}
+
+            for emb in embeddings:
+                file = file_map.get(emb.file_id)
+                if not file:
+                    continue
+                stored_vector = unpack_embedding(emb.embedding)
+                score = cosine_similarity(query_vector, stored_vector)
+                scored.append({
+                    "path": file.path,
+                    "filename": file.filename,
+                    "score": round(score, 4),
+                    "frontmatter": {},
+                })
+                if file.frontmatter:
+                    try:
+                        scored[-1]["frontmatter"] = json.loads(file.frontmatter)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            # Sort by score descending
+            scored.sort(key=lambda x: x["score"], reverse=True)
+            top_results = scored[:top_k]
+
+        return {
+            "query": query,
+            "results": top_results,
+            "total": len(top_results),
+            "fallback": False,
+        }
+
+    async def reindex_embeddings(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+    ) -> dict:
+        """Recompute embeddings for all files in the workspace."""
+        if not self._embedding_provider or isinstance(
+            self._embedding_provider, NullEmbeddingProvider
+        ):
+            return {"reindexed": 0, "error": "No embedding provider configured"}
+
+        _db = self._custom_get_db or get_db
+        reindexed = 0
+        skipped = 0
+        errors = 0
+
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "writer")
+
+            from sayou.catalog.queries import list_all_files
+            files = await list_all_files(session, org_id, ws.id)
+
+            for file in files:
+                if not self._is_text_content_type(file.content_type):
+                    skipped += 1
+                    continue
+
+                try:
+                    fm = {}
+                    if file.frontmatter:
+                        try:
+                            fm = json.loads(file.frontmatter)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                    embed_input = prepare_embedding_input(fm, file.content_text or "")
+                    c_hash = compute_content_hash(embed_input)
+
+                    # Check if already up to date
+                    existing = await get_embedding_for_file(
+                        session, file.id,
+                        self._embedding_provider.provider_name,
+                        self._embedding_provider.model_name,
+                    )
+                    if existing and existing.content_hash == c_hash:
+                        skipped += 1
+                        continue
+
+                    vector = await self._embedding_provider.embed(embed_input)
+                    if vector:
+                        await upsert_embedding(
+                            session, org_id, ws.id, file.id,
+                            file.current_version_id or "",
+                            provider=self._embedding_provider.provider_name,
+                            model=self._embedding_provider.model_name,
+                            dimensions=self._embedding_provider.dimensions,
+                            embedding=pack_embedding(vector),
+                            content_hash=c_hash,
+                        )
+                        reindexed += 1
+                except Exception:
+                    errors += 1
+
+        return {"reindexed": reindexed, "skipped": skipped, "errors": errors}
+
+    # ── Schema & Auto-Metadata ─────────────────────────────────────
+
+    async def get_schema(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+    ) -> dict:
+        """Discover frontmatter schema: field names, types, occurrences."""
+        from sayou.core.schema_discovery import discover_schema
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "reader")
+
+            # Scan all files for frontmatter
+            from sayou.catalog.queries import list_all_files
+            files = await list_all_files(session, org_id, ws.id)
+            frontmatters = []
+            for f in files:
+                if f.frontmatter:
+                    try:
+                        frontmatters.append(json.loads(f.frontmatter))
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            schema = discover_schema(frontmatters)
+
+            # Cache in DB
+            await delete_schema(session, org_id, ws.id)
+            for field in schema:
+                await upsert_schema_field(
+                    session, org_id, ws.id,
+                    field_name=field["field_name"],
+                    field_type=field["field_type"],
+                    occurrence_count=field["occurrence_count"],
+                    sample_values=field["sample_values"],
+                    is_auto=field["is_auto"],
+                )
+
+        return {
+            "fields": schema,
+            "total_fields": len(schema),
+            "total_files_scanned": len(frontmatters),
+        }
+
+    async def refresh_schema(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+    ) -> dict:
+        """Refresh the cached schema (alias for get_schema)."""
+        return await self.get_schema(org_id, user_id, workspace_slug)
+
+    async def generate_metadata(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        path: str,
+    ) -> dict:
+        """Generate _auto_ metadata for a single file via LLM."""
+        if not self._metadata_provider or isinstance(
+            self._metadata_provider, NullMetadataProvider
+        ):
+            return {"path": path, "error": "No metadata provider configured"}
+
+        clean_path = path.strip("/")
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "writer")
+
+            file = await get_file_by_path(session, org_id, ws.id, clean_path)
+            if file is None:
+                raise FileNotFoundError(f"File not found: {clean_path}")
+
+            if not file.content_text:
+                return {"path": clean_path, "generated": {}}
+
+            # Get schema for consistency
+            schema_entries = await get_schema(session, org_id, ws.id)
+            schema_dicts = [
+                {
+                    "field_name": s.field_name,
+                    "sample_values": json.loads(s.sample_values) if s.sample_values else [],
+                }
+                for s in schema_entries
+            ]
+
+            auto_meta = await self._metadata_provider.generate(
+                file.content_text, existing_schema=schema_dicts
+            )
+
+            if auto_meta:
+                existing_fm = {}
+                if file.frontmatter:
+                    try:
+                        existing_fm = json.loads(file.frontmatter)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                merged = merge_auto_metadata(existing_fm, auto_meta)
+                await update_file_current_version(
+                    session, file.id, file.current_version_id,
+                    file.version_count, frontmatter=merged,
+                )
+
+        return {"path": clean_path, "generated": auto_meta}
+
+    async def bulk_generate_metadata(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        path_pattern: str | None = None,
+    ) -> dict:
+        """Bulk generate _auto_ metadata for all files or matching pattern."""
+        if not self._metadata_provider or isinstance(
+            self._metadata_provider, NullMetadataProvider
+        ):
+            return {"generated": 0, "error": "No metadata provider configured"}
+
+        _db = self._custom_get_db or get_db
+        generated = 0
+        skipped = 0
+        errors = 0
+
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "writer")
+
+            from sayou.catalog.queries import list_all_files, list_files_by_glob
+            if path_pattern:
+                files = await list_files_by_glob(session, org_id, ws.id, path_pattern)
+            else:
+                files = await list_all_files(session, org_id, ws.id)
+
+            # Get schema once for all files
+            schema_entries = await get_schema(session, org_id, ws.id)
+            schema_dicts = [
+                {
+                    "field_name": s.field_name,
+                    "sample_values": json.loads(s.sample_values) if s.sample_values else [],
+                }
+                for s in schema_entries
+            ]
+
+            for file in files:
+                if not self._is_text_content_type(file.content_type):
+                    skipped += 1
+                    continue
+                if not file.content_text:
+                    skipped += 1
+                    continue
+
+                try:
+                    auto_meta = await self._metadata_provider.generate(
+                        file.content_text, existing_schema=schema_dicts
+                    )
+                    if auto_meta:
+                        existing_fm = {}
+                        if file.frontmatter:
+                            try:
+                                existing_fm = json.loads(file.frontmatter)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                        merged = merge_auto_metadata(existing_fm, auto_meta)
+                        await update_file_current_version(
+                            session, file.id, file.current_version_id,
+                            file.version_count, frontmatter=merged,
+                        )
+                        generated += 1
+                    else:
+                        skipped += 1
+                except Exception:
+                    errors += 1
+
+        return {"generated": generated, "skipped": skipped, "errors": errors}
+
+    # ── Links / Knowledge Graph ──────────────────────────────────────
+
+    async def get_links(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        path: str,
+    ) -> dict:
+        """Get outgoing and incoming links for a file."""
+        clean_path = path.strip("/")
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "reader")
+
+            outgoing = await get_links_from(session, org_id, ws.id, clean_path)
+            incoming = await get_links_to(session, org_id, ws.id, clean_path)
+
+            def _link_dict(link):
+                return {
+                    "source_path": link.source_path,
+                    "target_path": link.target_path,
+                    "link_type": link.link_type,
+                    "auto_detected": link.auto_detected,
+                    "context": link.context,
+                    "created_by": link.created_by,
+                }
+
+        return {
+            "path": clean_path,
+            "outgoing": [_link_dict(l) for l in outgoing],
+            "incoming": [_link_dict(l) for l in incoming],
+        }
+
+    async def add_link(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        source_path: str,
+        target_path: str,
+        link_type: str = "reference",
+        context: str | None = None,
+    ) -> dict:
+        """Manually add a link between two files."""
+        clean_src = source_path.strip("/")
+        clean_tgt = target_path.strip("/")
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "writer")
+
+            link = await upsert_link(
+                session, org_id, ws.id,
+                source_path=clean_src,
+                target_path=clean_tgt,
+                link_type=link_type,
+                auto_detected=False,
+                context=context,
+                created_by=user_id,
+            )
+
+        return {
+            "source_path": link.source_path,
+            "target_path": link.target_path,
+            "link_type": link.link_type,
+            "created": True,
+        }
+
+    async def remove_link(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        source_path: str,
+        target_path: str,
+        link_type: str = "reference",
+    ) -> dict:
+        """Remove a specific link."""
+        clean_src = source_path.strip("/")
+        clean_tgt = target_path.strip("/")
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "writer")
+
+            deleted = await delete_link_query(
+                session, org_id, ws.id, clean_src, clean_tgt, link_type
+            )
+
+        return {
+            "source_path": clean_src,
+            "target_path": clean_tgt,
+            "link_type": link_type,
+            "deleted": deleted,
+        }
+
+    async def traverse_graph(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+        path: str,
+        depth: int = 1,
+    ) -> dict:
+        """BFS graph traversal from a starting path."""
+        clean_path = path.strip("/")
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "reader")
+
+            result = await get_neighbors(
+                session, org_id, ws.id, clean_path, depth=depth
+            )
+
+        return {
+            "start": clean_path,
+            "depth": depth,
+            "nodes": sorted(result["nodes"]),
+            "edges": result["edges"],
+            "node_count": len(result["nodes"]),
+            "edge_count": len(result["edges"]),
+        }
+
+    async def graph_summary(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+    ) -> dict:
+        """Get workspace-level graph statistics."""
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "reader")
+
+            return await get_graph_summary(session, org_id, ws.id)
 
     # ── KV Store ────────────────────────────────────────────────────
 

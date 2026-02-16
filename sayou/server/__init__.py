@@ -1,6 +1,9 @@
+import logging
+from functools import wraps
+
 from mcp.server.fastmcp import FastMCP
 
-from sayou.config import settings
+from sayou.config import format_error, settings
 from sayou.core.workspace import (
     AccessDeniedError,
     FileExistsError,
@@ -8,10 +11,23 @@ from sayou.core.workspace import (
     WorkspaceService,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _identity() -> tuple[str, str, str]:
     """Read identity from settings (set via MCP config env vars)."""
     return settings.org_id, settings.user_id, settings.workspace_slug
+
+
+def _handle_errors(func):
+    """Decorator that catches exceptions and returns actionable error messages."""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            return format_error(e, {"org_id": settings.org_id, **kwargs})
+    return wrapper
 
 
 def _format_read_result(result: dict) -> str:
@@ -65,7 +81,36 @@ def _format_history_result(result: dict) -> str:
 
 def create_server() -> tuple[FastMCP, WorkspaceService]:
     server = FastMCP("sayou")
-    ws = WorkspaceService()
+
+    # Initialize providers from config
+    from sayou.core.embeddings import get_embedding_provider
+    from sayou.core.auto_metadata import get_metadata_provider
+    embedding_provider = get_embedding_provider(
+        provider=settings.embedding_provider,
+        api_key=settings.embedding_api_key,
+        model=settings.embedding_model,
+    )
+    metadata_provider = get_metadata_provider(
+        provider=settings.metadata_provider,
+        api_key=settings.metadata_api_key,
+        model=settings.metadata_model,
+    )
+
+    # Use local storage when no S3 credentials are configured
+    storage = None
+    has_s3 = bool(settings.s3_access_key_id and settings.s3_secret_access_key)
+    if not has_s3:
+        from sayou.storage.local import LocalStorage
+        storage = LocalStorage(base_path="~/.sayou/storage")
+
+    ws = WorkspaceService(
+        storage=storage,
+        embedding_provider=embedding_provider,
+        metadata_provider=metadata_provider,
+        auto_metadata_enabled=settings.auto_metadata_enabled,
+    )
+
+    # ── Core Tools (9) ─────────────────────────────────────────
 
     @server.tool(name="workspace_write")
     async def workspace_write(
@@ -102,11 +147,21 @@ def create_server() -> tuple[FastMCP, WorkspaceService]:
 
     @server.tool(name="workspace_read")
     async def workspace_read(
-        path: str, token_budget: int = 4000, version: int | None = None
+        path: str, token_budget: int = 4000, version: int | None = None,
+        line_start: int | None = None, line_end: int | None = None,
     ) -> str:
-        """Read a file from the workspace. Returns the latest version content with frontmatter metadata. Use token_budget to control output size. Optionally specify a version number to read a specific historical version."""
+        """Read a file from the workspace. Returns the latest version content with frontmatter metadata. Use token_budget to control output size. Optionally specify a version number to read a specific historical version. Use line_start/line_end to read a specific line range (1-indexed, inclusive) — useful after reading a summarized file to drill into specific sections."""
         try:
             org_id, user_id, workspace_slug = _identity()
+            if line_start is not None and line_end is not None:
+                result = await ws.read_section(
+                    org_id, user_id, workspace_slug, path, line_start, line_end
+                )
+                header = (
+                    f"**{result['path']}** lines {result['line_start']}-{result['line_end']} "
+                    f"(of {result['total_lines']})"
+                )
+                return f"{header}\n\n{result['content']}"
             result = await ws.read(
                 org_id, user_id, workspace_slug, path, token_budget, version
             )
@@ -132,11 +187,31 @@ def create_server() -> tuple[FastMCP, WorkspaceService]:
 
     @server.tool(name="workspace_search")
     async def workspace_search(
-        query: str | None = None, filters: dict | None = None
+        query: str | None = None, filters: dict | None = None,
+        chunk_level: bool = False,
+        path_pattern: str | None = None, limit: int = 20,
     ) -> str:
-        """Search files by frontmatter metadata filters and/or full-text query. Filters match exact frontmatter values. Query searches file paths and frontmatter text."""
+        """Search files by frontmatter metadata filters and/or full-text query. Filters match exact frontmatter values. Query searches file paths and frontmatter text. Set chunk_level=true for section-level precision instead of whole-file matches."""
         try:
             org_id, user_id, workspace_slug = _identity()
+            if chunk_level:
+                result = await ws.search_chunks(
+                    org_id, user_id, workspace_slug, query,
+                    path_pattern=path_pattern, limit=limit,
+                )
+                if not result["results"]:
+                    return f"No chunks matching '{query}'"
+                lines = [f"**{result['total']} chunk matches for '{query}'**"]
+                for r in result["results"]:
+                    heading = f" ({r['heading']})" if r.get("heading") else ""
+                    lines.append(
+                        f"  - {r['path']}[{r['chunk_index']}] "
+                        f"lines {r['line_start']}-{r['line_end']}{heading}"
+                    )
+                    preview = r.get("content_preview", "")
+                    if preview:
+                        lines.append(f"    {preview[:100]}...")
+                return "\n".join(lines)
             result = await ws.search(org_id, user_id, workspace_slug, query, filters)
             return _format_search_result(result)
         except AccessDeniedError as e:
@@ -159,10 +234,20 @@ def create_server() -> tuple[FastMCP, WorkspaceService]:
             return f"Error deleting file: {e}"
 
     @server.tool(name="workspace_history")
-    async def workspace_history(path: str, limit: int = 20) -> str:
-        """Get version history for a file. Returns all versions with timestamps, sizes, and content hashes."""
+    async def workspace_history(
+        path: str, limit: int = 20,
+        version_a: int | None = None, version_b: int | None = None,
+    ) -> str:
+        """Get version history for a file. Returns all versions with timestamps, sizes, and content hashes. Pass version_a and version_b to compare two versions — returns a unified diff showing additions (+) and removals (-)."""
         try:
             org_id, user_id, workspace_slug = _identity()
+            if version_a is not None and version_b is not None:
+                result = await ws.diff(
+                    org_id, user_id, workspace_slug, path, version_a, version_b
+                )
+                if not result["has_changes"]:
+                    return f"No differences between v{version_a} and v{version_b} of {result['path']}"
+                return f"**Diff: {result['path']} v{version_a} → v{version_b}**\n\n```diff\n{result['diff']}```"
             result = await ws.history(org_id, user_id, workspace_slug, path, limit)
             return _format_history_result(result)
         except FileNotFoundError as e:
@@ -216,189 +301,165 @@ def create_server() -> tuple[FastMCP, WorkspaceService]:
         except Exception as e:
             return f"Error grepping: {e}"
 
-    @server.tool(name="workspace_audit")
-    async def workspace_audit(
-        path: str | None = None,
-        action: str | None = None,
-        agent_id: str | None = None,
-        since: str | None = None,
-        until: str | None = None,
-        limit: int = 50,
+    @server.tool(name="workspace_kv")
+    async def workspace_kv(
+        action: str,
+        key: str | None = None,
+        value: str | None = None,
+        ttl_seconds: int | None = None,
+        prefix: str | None = None,
     ) -> str:
-        """Query the workspace mutation audit log. Filter by file path, action (write/delete), agent_id, or time range (ISO 8601). Returns recent mutations sorted newest-first."""
+        """Key-value store for configuration, caches, and temporary data. Actions: get (retrieve by key), set (store value with optional TTL), list (browse keys by prefix), delete (remove key). Values are stored as JSON strings."""
         try:
-            from datetime import datetime
-
+            import json
             org_id, user_id, workspace_slug = _identity()
 
-            since_dt = datetime.fromisoformat(since) if since else None
-            until_dt = datetime.fromisoformat(until) if until else None
+            if action == "get":
+                result = await ws.kv_get(org_id, user_id, workspace_slug, key)
+                if not result["found"]:
+                    return f"Key not found: {key}"
+                return f"**{key}** = {json.dumps(result['value'])}"
 
-            result = await ws.audit_log(
-                org_id, user_id, workspace_slug,
-                path=path, action=action, agent_id=agent_id,
-                since=since_dt, until=until_dt, limit=limit,
-            )
-            if not result["entries"]:
-                return "No audit log entries found"
-            lines = [f"**{result['total']} audit entries**"]
-            for e in result["entries"]:
-                ts = e.get("created_at", "")
-                agent = e.get("agent_id") or "unknown"
-                lines.append(f"  [{ts}] {e['action'].upper()} {e['file_path']} by {agent}")
-            return "\n".join(lines)
-        except AccessDeniedError as e:
-            return f"Access denied: {e}"
-        except Exception as e:
-            return f"Error querying audit log: {e}"
+            elif action == "set":
+                try:
+                    parsed = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = value
+                await ws.kv_set(
+                    org_id, user_id, workspace_slug, key, parsed, ttl_seconds
+                )
+                ttl_info = f" (TTL: {ttl_seconds}s)" if ttl_seconds else ""
+                return f"Set {key}{ttl_info}"
 
-    @server.tool(name="workspace_move")
-    async def workspace_move(source_path: str, dest_path: str) -> str:
-        """Move a file to a new path within the workspace. Version history is preserved."""
-        try:
-            org_id, user_id, workspace_slug = _identity()
-            result = await ws.move(
-                org_id, user_id, workspace_slug, source_path, dest_path
-            )
-            return f"Moved {result['source']} → {result['destination']}"
-        except FileNotFoundError as e:
-            return f"Not found: {e}"
-        except FileExistsError as e:
-            return f"Already exists: {e}"
-        except AccessDeniedError as e:
-            return f"Access denied: {e}"
-        except Exception as e:
-            return f"Error moving: {e}"
-
-    @server.tool(name="workspace_copy")
-    async def workspace_copy(source_path: str, dest_path: str) -> str:
-        """Copy a file to a new path within the workspace. Creates an independent copy."""
-        try:
-            org_id, user_id, workspace_slug = _identity()
-            result = await ws.copy(
-                org_id, user_id, workspace_slug, source_path, dest_path
-            )
-            return f"Copied {result['source']} → {result['destination']}"
-        except FileNotFoundError as e:
-            return f"Not found: {e}"
-        except FileExistsError as e:
-            return f"Already exists: {e}"
-        except AccessDeniedError as e:
-            return f"Access denied: {e}"
-        except Exception as e:
-            return f"Error copying: {e}"
-
-    @server.tool(name="workspace_diff")
-    async def workspace_diff(path: str, version_a: int, version_b: int) -> str:
-        """Compare two versions of a file. Returns a unified diff showing additions (+) and removals (-) between the specified versions."""
-        try:
-            org_id, user_id, workspace_slug = _identity()
-            result = await ws.diff(
-                org_id, user_id, workspace_slug, path, version_a, version_b
-            )
-            if not result["has_changes"]:
-                return f"No differences between v{version_a} and v{version_b} of {result['path']}"
-            return f"**Diff: {result['path']} v{version_a} → v{version_b}**\n\n```diff\n{result['diff']}```"
-        except FileNotFoundError as e:
-            return f"Not found: {e}"
-        except AccessDeniedError as e:
-            return f"Access denied: {e}"
-        except Exception as e:
-            return f"Error diffing: {e}"
-
-    @server.tool(name="workspace_read_section")
-    async def workspace_read_section(
-        path: str, line_start: int, line_end: int
-    ) -> str:
-        """Read a specific line range from a file (1-indexed, inclusive). Use after reading a summarized file to drill into specific sections."""
-        try:
-            org_id, user_id, workspace_slug = _identity()
-            result = await ws.read_section(
-                org_id, user_id, workspace_slug, path, line_start, line_end
-            )
-            header = (
-                f"**{result['path']}** lines {result['line_start']}-{result['line_end']} "
-                f"(of {result['total_lines']})"
-            )
-            return f"{header}\n\n{result['content']}"
-        except FileNotFoundError as e:
-            return f"Not found: {e}"
-        except AccessDeniedError as e:
-            return f"Access denied: {e}"
-        except Exception as e:
-            return f"Error reading section: {e}"
-
-    @server.tool(name="workspace_kv_get")
-    async def workspace_kv_get(key: str) -> str:
-        """Get a value from the workspace key-value store."""
-        try:
-            org_id, user_id, workspace_slug = _identity()
-            result = await ws.kv_get(org_id, user_id, workspace_slug, key)
-            if not result["found"]:
+            elif action == "delete":
+                result = await ws.kv_delete(org_id, user_id, workspace_slug, key)
+                if result["deleted"]:
+                    return f"Deleted {key}"
                 return f"Key not found: {key}"
-            import json
-            return f"**{key}** = {json.dumps(result['value'])}"
+
+            elif action == "list":
+                result = await ws.kv_list(org_id, user_id, workspace_slug, prefix)
+                if not result["items"]:
+                    prefix_msg = f" with prefix '{prefix}'" if prefix else ""
+                    return f"No keys found{prefix_msg}"
+                lines = [f"**{result['total']} keys**"]
+                for item in result["items"]:
+                    val_preview = json.dumps(item["value"])
+                    if len(val_preview) > 60:
+                        val_preview = val_preview[:57] + "..."
+                    lines.append(f"  {item['key']} = {val_preview}")
+                return "\n".join(lines)
+
+            else:
+                return f"Unknown action: {action}. Use get, set, delete, or list."
+
         except AccessDeniedError as e:
             return f"Access denied: {e}"
         except Exception as e:
-            return f"Error getting key: {e}"
+            return f"Error in KV operation: {e}"
 
-    @server.tool(name="workspace_kv_set")
-    async def workspace_kv_set(
-        key: str, value: str, ttl_seconds: int | None = None
+    # ── Additional Tools (3) ───────────────────────────────────
+
+    @server.tool(name="workspace_links")
+    async def workspace_links(
+        path: str,
+        add_target: str | None = None,
+        link_type: str = "reference",
+        context: str | None = None,
     ) -> str:
-        """Set a value in the workspace key-value store. Value is stored as a JSON string. Optional TTL in seconds for auto-expiry."""
-        try:
-            import json
-            try:
-                parsed = json.loads(value)
-            except (json.JSONDecodeError, TypeError):
-                parsed = value
-            org_id, user_id, workspace_slug = _identity()
-            result = await ws.kv_set(
-                org_id, user_id, workspace_slug, key, parsed, ttl_seconds
-            )
-            ttl_info = f" (TTL: {ttl_seconds}s)" if ttl_seconds else ""
-            return f"Set {key}{ttl_info}"
-        except AccessDeniedError as e:
-            return f"Access denied: {e}"
-        except Exception as e:
-            return f"Error setting key: {e}"
-
-    @server.tool(name="workspace_kv_delete")
-    async def workspace_kv_delete(key: str) -> str:
-        """Delete a key from the workspace key-value store."""
+        """Get outgoing and incoming links for a file. To add a link, pass add_target with the target file path. Link types: reference, parent, depends_on, related, supersedes."""
         try:
             org_id, user_id, workspace_slug = _identity()
-            result = await ws.kv_delete(org_id, user_id, workspace_slug, key)
-            if result["deleted"]:
-                return f"Deleted {key}"
-            return f"Key not found: {key}"
-        except AccessDeniedError as e:
-            return f"Access denied: {e}"
-        except Exception as e:
-            return f"Error deleting key: {e}"
-
-    @server.tool(name="workspace_kv_list")
-    async def workspace_kv_list(prefix: str | None = None) -> str:
-        """List keys in the workspace key-value store. Optionally filter by key prefix."""
-        try:
-            import json
-            org_id, user_id, workspace_slug = _identity()
-            result = await ws.kv_list(org_id, user_id, workspace_slug, prefix)
-            if not result["items"]:
-                prefix_msg = f" with prefix '{prefix}'" if prefix else ""
-                return f"No keys found{prefix_msg}"
-            lines = [f"**{result['total']} keys**"]
-            for item in result["items"]:
-                val_preview = json.dumps(item["value"])
-                if len(val_preview) > 60:
-                    val_preview = val_preview[:57] + "..."
-                lines.append(f"  {item['key']} = {val_preview}")
+            if add_target:
+                result = await ws.add_link(
+                    org_id, user_id, workspace_slug,
+                    path, add_target,
+                    link_type=link_type, context=context,
+                )
+                return f"Linked {result['source_path']} → {result['target_path']} ({result['link_type']})"
+            result = await ws.get_links(org_id, user_id, workspace_slug, path)
+            lines = [f"**Links for {result['path']}**"]
+            if result["outgoing"]:
+                lines.append(f"\n**Outgoing ({len(result['outgoing'])}):**")
+                for lnk in result["outgoing"]:
+                    auto = " [auto]" if lnk["auto_detected"] else ""
+                    lines.append(f"  → {lnk['target_path']} ({lnk['link_type']}){auto}")
+            else:
+                lines.append("\nNo outgoing links")
+            if result["incoming"]:
+                lines.append(f"\n**Incoming ({len(result['incoming'])}):**")
+                for lnk in result["incoming"]:
+                    auto = " [auto]" if lnk["auto_detected"] else ""
+                    lines.append(f"  ← {lnk['source_path']} ({lnk['link_type']}){auto}")
+            else:
+                lines.append("\nNo incoming links")
             return "\n".join(lines)
         except AccessDeniedError as e:
             return f"Access denied: {e}"
         except Exception as e:
-            return f"Error listing keys: {e}"
+            return f"Error with links: {e}"
+
+    @server.tool(name="workspace_chunks")
+    async def workspace_chunks(path: str, chunk_index: int | None = None) -> str:
+        """Get chunk outline for a file: headings, line ranges, token estimates. Pass chunk_index to read a specific chunk's content."""
+        try:
+            org_id, user_id, workspace_slug = _identity()
+            if chunk_index is not None:
+                result = await ws.get_chunk(
+                    org_id, user_id, workspace_slug, path, chunk_index
+                )
+                heading = f" — {result['heading']}" if result.get("heading") else ""
+                header = (
+                    f"**{result['path']}** chunk [{result['chunk_index']}]{heading}\n"
+                    f"Lines {result['line_start']}-{result['line_end']} "
+                    f"({result['char_count']} chars, ~{result['token_estimate']} tokens)"
+                )
+                return f"{header}\n\n{result['content']}"
+            result = await ws.get_chunks(org_id, user_id, workspace_slug, path)
+            if not result["chunks"]:
+                return f"No chunks for {result['path']} (file may not be text or is empty)"
+            lines = [f"**{result['path']}** ({result['total']} chunks)"]
+            for c in result["chunks"]:
+                heading = f" — {c['heading']}" if c.get("heading") else ""
+                lines.append(
+                    f"  [{c['chunk_index']}] lines {c['line_start']}-{c['line_end']}"
+                    f" (~{c['token_estimate']} tokens){heading}"
+                )
+            return "\n".join(lines)
+        except FileNotFoundError as e:
+            return f"Not found: {e}"
+        except AccessDeniedError as e:
+            return f"Access denied: {e}"
+        except Exception as e:
+            return f"Error with chunks: {e}"
+
+    # ── Conditional: Semantic Search ───────────────────────────
+
+    if settings.embedding_provider:
+        @server.tool(name="workspace_semantic_search")
+        async def workspace_semantic_search(query: str, top_k: int = 10) -> str:
+            """Search files by meaning using vector embeddings. Returns the most similar files ranked by relevance. Best for finding conceptually related content when you don't know exact keywords."""
+            try:
+                org_id, user_id, workspace_slug = _identity()
+                result = await ws.semantic_search(
+                    org_id, user_id, workspace_slug, query, top_k=top_k,
+                )
+                if result.get("fallback"):
+                    return _format_search_result(result)
+                if not result["results"]:
+                    return f"No semantic matches for '{query}'"
+                lines = [f"**{result['total']} semantic matches for '{query}'**"]
+                for r in result["results"]:
+                    score = r.get("score", 0)
+                    fm_preview = ""
+                    if r.get("frontmatter"):
+                        pairs = [f"{k}={v}" for k, v in list(r["frontmatter"].items())[:3]]
+                        fm_preview = f" ({', '.join(pairs)})"
+                    lines.append(f"  - {r['path']} [score: {score}]{fm_preview}")
+                return "\n".join(lines)
+            except AccessDeniedError as e:
+                return f"Access denied: {e}"
+            except Exception as e:
+                return f"Error in semantic search: {e}"
 
     return server, ws

@@ -1,30 +1,71 @@
 # sayou
 
-**The persistent workspace for AI agents.**
+**A file-system inspired context store for AI agents.**
+
+Built to replace the databases of the web era. Open source. File-first. SQL-compatible.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org)
 
-sayou gives AI agents persistent, structured, enterprise-controlled storage. Agents write files. Files accumulate. Knowledge compounds.
+Databases were designed for transactions — they reduce nuance to fit a schema. Agents think deeply, then forget everything when the session ends. sayou is where reasoning persists, context accumulates, and knowledge compounds over time.
 
-- **Persistent file workspace** — Versioned files organized in folders. Survives beyond any single conversation.
-- **Structured metadata** — YAML frontmatter for queryable fields (`status: active`, `priority: high`). Markdown body for context.
-- **Hierarchical auto-indexing** — Every write triggers index regeneration up the folder tree. Agents navigate thousands of files in 3-4 reads.
-- **Context-aware retrieval** — Every read accepts a `token_budget`. Returns summaries with pointers when content exceeds the budget.
-- **Append-only version history** — No destructive updates. Every change is a new version. Full audit trail and time-travel for free.
+- **Files that hold what databases can't** — Frontmatter for structure. Markdown for context. Versioned. Auditable.
+- **One read. Full context.** — Every read accepts a `token_budget`. Returns summaries with section pointers when content exceeds the budget.
+- **Knowledge that compounds** — Append-only version history. Every change is a new version. Full audit trail and time-travel reads.
+- **Any agent can connect** — MCP server, Python library, or CLI. Optional REST API with `pip install sayou[api]`.
 
-## Quickstart: Python API
+## Quick Start (60 seconds)
 
+### 1. Install
 ```bash
 pip install sayou
 ```
+
+### 2. Initialize
+```bash
+sayou init
+```
+
+### 3. Connect to Claude Code
+
+Add to `~/.claude/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "sayou": { "command": "sayou" }
+  }
+}
+```
+
+That's it. Claude Code now has persistent workspace memory.
+
+## MCP Tools
+
+The agent gets 11 tools (12 with embeddings enabled):
+
+| Tool | Description |
+|------|-------------|
+| `workspace_write` | Write or update a file (text or binary with YAML frontmatter) |
+| `workspace_read` | Read latest or specific version, with optional line range |
+| `workspace_list` | List files and subfolders with auto-generated index |
+| `workspace_search` | Search by full-text query, frontmatter filters, or chunk-level |
+| `workspace_delete` | Soft-delete a file (history preserved) |
+| `workspace_history` | Version history with timestamps, or diff between two versions |
+| `workspace_glob` | Find files matching a glob pattern |
+| `workspace_grep` | Search file contents with context lines |
+| `workspace_kv` | Key-value store (get/set/list/delete with optional TTL) |
+| `workspace_links` | File links and knowledge graph (get or add links) |
+| `workspace_chunks` | Chunk outline or read a specific chunk by index |
+| `workspace_semantic_search` | Vector similarity search (requires `SAYOU_EMBEDDING_PROVIDER`) |
+
+## Python API
 
 ```python
 import asyncio
 from sayou import Workspace
 
 async def main():
-    async with Workspace(org_id="my-org", user_id="alice") as ws:
+    async with Workspace() as ws:
         # Write a file with YAML frontmatter
         await ws.write("notes/hello.md", """\
 ---
@@ -43,18 +84,59 @@ This file is versioned and searchable.
         results = await ws.search(filters={"status": "active"})
         print(f"Found {results['total']} active files")
 
-        # List a folder
-        folder = await ws.list("notes/")
-        print(f"{folder['file_count']} files in notes/")
-
 asyncio.run(main())
 ```
 
-By default this creates a local SQLite database (`./sayou.db`) — zero config, nothing to install.
+See [`examples/quickstart.py`](examples/quickstart.py) for a runnable version.
 
-## Quickstart: MCP Server
+## CLI
 
-Add sayou to Claude Code or any MCP-compatible client:
+```bash
+# File operations
+sayou file read notes/hello.md
+sayou file write notes/hello.md "# Hello World"
+sayou file list /
+sayou file search --query "hello" --filter status=active
+
+# KV store
+sayou kv set config.theme '"dark"'
+sayou kv get config.theme
+
+# Diagnostics
+sayou init      # Initialize local setup
+sayou status    # Show diagnostic info
+```
+
+## Examples
+
+| Example | What it shows |
+|---------|---------------|
+| [`quickstart.py`](examples/quickstart.py) | Hello World — write, read, search, list in 30 lines |
+| [`kv_config.py`](examples/kv_config.py) | KV store for config, feature flags, caching with TTL |
+| [`version_control.py`](examples/version_control.py) | Version history, diff, time-travel reads |
+| [`file_operations.py`](examples/file_operations.py) | Move, copy, binary files, glob patterns |
+| [`multi_agent.py`](examples/multi_agent.py) | Multi-agent collaboration with shared workspace |
+| [`research_agent.py`](examples/research_agent.py) | All methods exercised — the comprehensive reference |
+
+## Installation Options
+
+```bash
+# Basic (MCP server + CLI + SQLite)
+pip install sayou
+
+# With REST API support
+pip install sayou[api]
+
+# With S3 storage
+pip install sayou[s3]
+
+# Full installation (all features)
+pip install sayou[all]
+```
+
+## Production Deployment
+
+For team/production use with MySQL + S3:
 
 ```json
 {
@@ -63,55 +145,18 @@ Add sayou to Claude Code or any MCP-compatible client:
       "command": "sayou",
       "env": {
         "SAYOU_ORG_ID": "my-org",
-        "SAYOU_USER_ID": "alice"
+        "SAYOU_USER_ID": "alice",
+        "SAYOU_DATABASE_URL": "mysql+aiomysql://user:pass@host/sayou",
+        "SAYOU_S3_BUCKET_NAME": "my-bucket",
+        "SAYOU_S3_ACCESS_KEY_ID": "...",
+        "SAYOU_S3_SECRET_ACCESS_KEY": "..."
       }
     }
   }
 }
 ```
 
-That's it. The agent gets 8 tools: `workspace_write`, `workspace_read`, `workspace_list`, `workspace_search`, `workspace_delete`, `workspace_history`, `workspace_glob`, `workspace_grep`.
-
-## Quickstart: CLI Agent Example
-
-Seed a workspace with sample data, then chat with it using an OpenAI-backed agent:
-
-```bash
-pip install sayou[examples]
-
-python examples/seed_data.py      # writes ~28 files across 5 folders
-python examples/ask.py            # natural language agent (needs OPENAI_API_KEY)
-```
-
-```
-ask> what competitors have we analyzed?
-  [list_files] {"path": "competitors/", "recursive": false}
-  [read_file] {"path": "competitors/notion.md"}
-
-We've analyzed 6 competitors: Notion, Linear, Airtable, Figma, Retool, and Vercel...
-
-ask> add a competitor analysis for Shopify
-  [write_file] {"path": "competitors/shopify.md", "content": "---\ncompany: Shopify\n..."}
-
-Wrote competitors/shopify.md (v1, 1,204 bytes)
-```
-
-See [`examples/seed_data.py`](examples/seed_data.py) and [`examples/ask.py`](examples/ask.py) for the full source.
-
-## API Reference
-
-All methods are async. The `Workspace` class binds identity (`org_id`, `user_id`) once at construction.
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `write` | `(path, content, *, source=None)` | Write or update a file. Returns version info. |
-| `read` | `(path, *, token_budget=4000, version=None)` | Read latest (or specific) version of a file. |
-| `list` | `(path="/", *, recursive=False)` | List files and subfolders with auto-generated index. |
-| `search` | `(*, query=None, filters=None)` | Search by full-text query and/or frontmatter filters. |
-| `glob` | `(pattern)` | Find files matching a glob pattern (`**/*.md`). |
-| `grep` | `(query, *, path_pattern=None, context_lines=2)` | Search file contents for a string, with context. |
-| `delete` | `(path, *, source=None)` | Soft-delete a file. Version history is preserved. |
-| `history` | `(path, *, limit=20)` | Get version history with timestamps and hashes. |
+Install with all backends: `pip install sayou[all]`
 
 ## Storage Backends
 
@@ -120,25 +165,12 @@ All methods are async. The `Workspace` class binds identity (`org_id`, `user_id`
 | **SQLite + local disk** (default) | No config needed | Local dev, single-machine agents, MCP server |
 | **MySQL + S3** | Set `database_url`, S3 credentials | Production, multi-agent, shared workspaces |
 
-```python
-# Local (default) — just works
-async with Workspace() as ws: ...
-
-# Production
-async with Workspace(
-    database_url="mysql+aiomysql://user:pass@host/sayou",
-    s3_bucket="my-bucket",
-    s3_access_key_id="...",
-    s3_secret_access_key="...",
-) as ws: ...
-```
-
 ## What sayou is NOT
 
 - **Not a vector database.** Pinecone, Weaviate, and Chroma store embeddings for similarity search. sayou stores structured files that agents read, write, and reason over.
 - **Not a memory layer.** Mem0 and similar tools store conversation snippets. sayou stores work product — research, client records, project documentation — that compounds over time.
 - **Not a sandbox.** E2B provides ephemeral execution environments. sayou provides persistent storage that outlives any single execution.
-- **Not a filesystem.** AgentFS intercepts syscalls to virtualize file operations. sayou is a knowledge workspace with versioning, indexing, and context-aware retrieval built in.
+- **Not a filesystem.** AgentFS intercepts syscalls to virtualize file operations. A knowledge workspace with versioning and indexing.
 
 ## Philosophy
 

@@ -1,5 +1,5 @@
 """
-Research agent example — exercises all 8 Workspace methods.
+Research agent example — exercises all Workspace methods.
 
 Runs fully in-memory (SQLite + temp directory) so it leaves no artifacts.
 
@@ -174,7 +174,73 @@ Revenue now estimated at $275M ARR after international expansion.
         print(f"   drunk-elephant.md deleted: {'competitors/drunk-elephant.md' not in remaining}")
         print()
 
-    print("Done. All 8 methods exercised successfully.")
+        # ── 9. Diff ───────────────────────────────────────────────
+        print("9) DIFF — compare v1 vs v2 of Glossier file\n")
+
+        diff_result = await ws.diff("competitors/glossier.md", 1, 2)
+        print(f"   has_changes: {diff_result['has_changes']}")
+        print(f"   diff preview:")
+        for line in diff_result["diff"][:300].splitlines():
+            print(f"   {line}")
+        print()
+
+        # ── 10. Move ──────────────────────────────────────────────
+        print("10) MOVE — move Glossier to an 'archive' folder\n")
+
+        move_result = await ws.move(
+            "competitors/glossier.md",
+            "archive/competitors/glossier.md",
+        )
+        print(f"   moved: {move_result['source']} → {move_result['destination']}")
+
+        # Verify it moved
+        archived = await ws.read("archive/competitors/glossier.md")
+        print(f"   read from new path: {archived['path']} (v{archived['version_number']})")
+        print()
+
+        # ── 11. Copy ──────────────────────────────────────────────
+        print("11) COPY — copy archived file back for reference\n")
+
+        copy_result = await ws.copy(
+            "archive/competitors/glossier.md",
+            "competitors/glossier-ref.md",
+        )
+        print(f"   copied: {copy_result['source']} → {copy_result['destination']}")
+
+        ref = await ws.read("competitors/glossier-ref.md")
+        print(f"   copy exists: {ref['path']} (v{ref['version_number']})")
+        print()
+
+        # ── 12. KV Store ──────────────────────────────────────────
+        print("12) KV STORE — store and retrieve agent config\n")
+
+        await ws.kv_set("agent.last_run", "2026-02-15T12:00:00Z")
+        await ws.kv_set("agent.files_analyzed", 3)
+
+        last_run = await ws.kv_get("agent.last_run")
+        print(f"   last_run: {last_run['value']}")
+
+        analyzed = await ws.kv_get("agent.files_analyzed")
+        print(f"   files_analyzed: {analyzed['value']}")
+
+        all_keys = await ws.kv_list(prefix="agent.")
+        print(f"   total agent keys: {all_keys['total']}")
+        print()
+
+        # ── 13. Audit ─────────────────────────────────────────────
+        print("13) AUDIT — query the mutation log\n")
+
+        log = await ws.audit(limit=10)
+        print(f"   total mutations: {log['total']}")
+        for entry in log["entries"][:5]:
+            action = entry.get("action", "?")
+            path = entry.get("file_path", "?")
+            print(f"   - {action}: {path}")
+        if log["total"] > 5:
+            print(f"   ... and {log['total'] - 5} more")
+        print()
+
+    print("Done. All methods exercised successfully.")
 
 
 if __name__ == "__main__":

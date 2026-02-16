@@ -137,6 +137,12 @@ def main():
     kl.add_argument("--prefix", default=None, help="Key prefix filter")
     _add_common_args(kl)
 
+    # ── init ─────────────────────────────────────────────────────
+    subparsers.add_parser("init", help="Initialize local sayou setup")
+
+    # ── status ───────────────────────────────────────────────────
+    subparsers.add_parser("status", help="Show sayou diagnostic status")
+
     # ── audit ────────────────────────────────────────────────────
     audit_parser = subparsers.add_parser("audit", help="Query audit log")
     audit_parser.add_argument("--path", default=None, help="Filter by file path")
@@ -154,9 +160,25 @@ def main():
 
     if args.command == "server":
         if args.transport == "http":
+            try:
+                import fastapi  # noqa: F401
+            except ImportError:
+                print("REST API requires additional dependencies.")
+                print("Install with: pip install sayou[api]")
+                return
             asyncio.run(_run_http(args.host, args.port))
         else:
             asyncio.run(_run_stdio())
+        return
+
+    if args.command == "init":
+        from sayou.cli.init import run_init
+        asyncio.run(run_init())
+        return
+
+    if args.command == "status":
+        from sayou.cli.status import run_status
+        asyncio.run(run_status())
         return
 
     # CLI commands

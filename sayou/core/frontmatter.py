@@ -78,7 +78,27 @@ def _safe_parse_yaml(yaml_str: str) -> dict | None:
     try:
         result = yaml.safe_load(yaml_str)
         if isinstance(result, dict):
-            return result
+            return _normalize_values(result)
         return None
     except Exception:
         return None
+
+
+def _normalize_values(d: dict) -> dict:
+    """Ensure all values are JSON-serializable (date/datetime → str)."""
+    import datetime
+
+    normalized = {}
+    for k, v in d.items():
+        if isinstance(v, (datetime.date, datetime.datetime)):
+            normalized[k] = v.isoformat()
+        elif isinstance(v, dict):
+            normalized[k] = _normalize_values(v)
+        elif isinstance(v, list):
+            normalized[k] = [
+                item.isoformat() if isinstance(item, (datetime.date, datetime.datetime)) else item
+                for item in v
+            ]
+        else:
+            normalized[k] = v
+    return normalized

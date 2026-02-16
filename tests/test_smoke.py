@@ -240,7 +240,7 @@ async def test_smoke_full_cycle(smoke_env):
 
 @pytest.mark.asyncio
 async def test_smoke_mcp_tools():
-    """create_server() exposes 17 tools with correct names and schemas."""
+    """create_server() exposes 11 core tools (12 with embeddings) with correct schemas."""
     from sayou.server import create_server
 
     server, ws = create_server()
@@ -256,17 +256,13 @@ async def test_smoke_mcp_tools():
         "workspace_history",
         "workspace_glob",
         "workspace_grep",
-        "workspace_audit",
-        "workspace_move",
-        "workspace_copy",
-        "workspace_diff",
-        "workspace_read_section",
-        "workspace_kv_get",
-        "workspace_kv_set",
-        "workspace_kv_delete",
-        "workspace_kv_list",
+        "workspace_kv",
+        "workspace_links",
+        "workspace_chunks",
     }
-    assert tool_names == expected, f"Tool mismatch. Missing: {expected - tool_names}, Extra: {tool_names - expected}"
+    # workspace_semantic_search only registered when SAYOU_EMBEDDING_PROVIDER is set
+    assert expected.issubset(tool_names), f"Missing tools: {expected - tool_names}"
+    assert tool_names - expected <= {"workspace_semantic_search"}, f"Unexpected extra tools: {tool_names - expected}"
 
     tool_map = {t.name: t for t in tools}
 
@@ -275,20 +271,25 @@ async def test_smoke_mcp_tools():
     assert "path" in write_schema["properties"]
     assert "content" in write_schema["properties"]
 
-    # workspace_read requires path, has token_budget
+    # workspace_read requires path, has token_budget + line_start/line_end (merged read_section)
     read_schema = tool_map["workspace_read"].inputSchema
     assert "path" in read_schema["properties"]
     assert "token_budget" in read_schema["properties"]
+    assert "line_start" in read_schema["properties"]
+    assert "line_end" in read_schema["properties"]
 
-    # workspace_search has query + filters
+    # workspace_search has query + filters + chunk_level (merged search_chunks)
     search_schema = tool_map["workspace_search"].inputSchema
     assert "query" in search_schema["properties"]
     assert "filters" in search_schema["properties"]
+    assert "chunk_level" in search_schema["properties"]
 
-    # workspace_history has path + limit
+    # workspace_history has path + limit + version_a/version_b (merged diff)
     history_schema = tool_map["workspace_history"].inputSchema
     assert "path" in history_schema["properties"]
     assert "limit" in history_schema["properties"]
+    assert "version_a" in history_schema["properties"]
+    assert "version_b" in history_schema["properties"]
 
     # workspace_glob has pattern
     glob_schema = tool_map["workspace_glob"].inputSchema
@@ -299,47 +300,18 @@ async def test_smoke_mcp_tools():
     assert "query" in grep_schema["properties"]
     assert "path_pattern" in grep_schema["properties"]
 
-    # workspace_audit has optional filters
-    audit_schema = tool_map["workspace_audit"].inputSchema
-    assert "action" in audit_schema["properties"]
-    assert "agent_id" in audit_schema["properties"]
-    assert "limit" in audit_schema["properties"]
+    # workspace_kv has action (merged 4 KV tools)
+    kv_schema = tool_map["workspace_kv"].inputSchema
+    assert "action" in kv_schema["properties"]
+    assert "key" in kv_schema["properties"]
+    assert "value" in kv_schema["properties"]
 
-    # workspace_move requires source_path + dest_path
-    move_schema = tool_map["workspace_move"].inputSchema
-    assert "source_path" in move_schema["properties"]
-    assert "dest_path" in move_schema["properties"]
+    # workspace_links has path + add_target (merged add_link)
+    links_schema = tool_map["workspace_links"].inputSchema
+    assert "path" in links_schema["properties"]
+    assert "add_target" in links_schema["properties"]
 
-    # workspace_copy requires source_path + dest_path
-    copy_schema = tool_map["workspace_copy"].inputSchema
-    assert "source_path" in copy_schema["properties"]
-    assert "dest_path" in copy_schema["properties"]
-
-    # workspace_diff requires path + version_a + version_b
-    diff_schema = tool_map["workspace_diff"].inputSchema
-    assert "path" in diff_schema["properties"]
-    assert "version_a" in diff_schema["properties"]
-    assert "version_b" in diff_schema["properties"]
-
-    # workspace_read_section requires path + line_start + line_end
-    section_schema = tool_map["workspace_read_section"].inputSchema
-    assert "path" in section_schema["properties"]
-    assert "line_start" in section_schema["properties"]
-    assert "line_end" in section_schema["properties"]
-
-    # workspace_kv_get requires key
-    kv_get_schema = tool_map["workspace_kv_get"].inputSchema
-    assert "key" in kv_get_schema["properties"]
-
-    # workspace_kv_set requires key + value
-    kv_set_schema = tool_map["workspace_kv_set"].inputSchema
-    assert "key" in kv_set_schema["properties"]
-    assert "value" in kv_set_schema["properties"]
-
-    # workspace_kv_delete requires key
-    kv_del_schema = tool_map["workspace_kv_delete"].inputSchema
-    assert "key" in kv_del_schema["properties"]
-
-    # workspace_kv_list has optional prefix
-    kv_list_schema = tool_map["workspace_kv_list"].inputSchema
-    assert "prefix" in kv_list_schema["properties"]
+    # workspace_chunks has path + chunk_index (merged chunk)
+    chunks_schema = tool_map["workspace_chunks"].inputSchema
+    assert "path" in chunks_schema["properties"]
+    assert "chunk_index" in chunks_schema["properties"]

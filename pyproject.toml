@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sayou"
-version = "0.1.1"
+version = "0.2.0"
 description = "A file-system inspired context store for AI agents"
 readme = "README.md"
 license = "Apache-2.0"
@@ -12,8 +12,12 @@ requires-python = ">=3.11"
 authors = [
     { name = "Pixell", email = "kevin_yum@pixell.global" },
 ]
+keywords = [
+    "agent", "mcp", "workspace", "versioning", "context",
+    "storage", "knowledge", "markdown", "frontmatter", "ai",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
@@ -21,19 +25,17 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
 ]
 
 dependencies = [
     "mcp>=1.8.0",
     "sqlalchemy[asyncio]>=2.0.0",
-    "aiomysql>=0.2.0",
     "aiosqlite>=0.17.0",
     "alembic>=1.13.0",
-    "aioboto3>=12.0.0",
+    "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "pyyaml>=6.0.0",
-    "fastapi>=0.110.0",
-    "httpx>=0.27.0",
 ]
 
 [project.urls]
@@ -41,17 +43,22 @@ Homepage = "https://sayou.dev"
 Repository = "https://github.com/pixell-global/sayou"
 Documentation = "https://github.com/pixell-global/sayou#readme"
 Issues = "https://github.com/pixell-global/sayou/issues"
+Changelog = "https://github.com/pixell-global/sayou/releases"
 
 [project.optional-dependencies]
+api = ["fastapi>=0.110.0", "httpx>=0.27.0", "uvicorn>=0.27.0"]
+s3 = ["aioboto3>=12.0.0"]
+mysql = ["aiomysql>=0.2.0"]
+ai = ["openai>=1.0.0"]
+all = ["sayou[api,s3,mysql,ai]"]
 dev = [
+    "sayou[all]",
     "pytest>=8.0.0",
     "pytest-asyncio>=1.0.0",
     "moto[s3]>=5.0.0",
     "ruff>=0.4.0",
 ]
-examples = [
-    "openai>=1.0.0",
-]
+examples = ["openai>=1.0.0"]
 
 [project.scripts]
 sayou = "sayou.__main__:main"

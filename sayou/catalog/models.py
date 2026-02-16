@@ -3,9 +3,11 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -144,6 +146,102 @@ class SayouKVEntry(Base):
     __table_args__ = (
         UniqueConstraint("org_id", "workspace_id", "key", name="uq_kv_org_ws_key"),
         Index("ix_kv_expires", "expires_at"),
+    )
+
+
+class SayouWorkspaceSchema(Base):
+    __tablename__ = "sayou_workspace_schema"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    field_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    field_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sample_values: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_auto: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "workspace_id", "field_name", name="uq_schema_org_ws_field"),
+    )
+
+
+class SayouEmbedding(Base):
+    __tablename__ = "sayou_embeddings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    file_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("file_id", "provider", "model", name="uq_embedding_file_provider_model"),
+        Index("ix_embedding_org_ws", "org_id", "workspace_id"),
+    )
+
+
+class SayouFileLink(Base):
+    __tablename__ = "sayou_file_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    target_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    link_type: Mapped[str] = mapped_column(String(50), nullable=False, default="reference")
+    auto_detected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    context: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "workspace_id", "source_path", "target_path", "link_type",
+            name="uq_link_org_ws_src_tgt_type",
+        ),
+        Index("ix_link_source", "org_id", "workspace_id", "source_path"),
+        Index("ix_link_target", "org_id", "workspace_id", "target_path"),
+    )
+
+
+class SayouChunk(Base):
+    __tablename__ = "sayou_chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    file_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    heading: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    heading_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    line_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_estimate: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("file_id", "version_id", "chunk_index", name="uq_chunk_file_ver_idx"),
+        Index("ix_chunk_org_ws", "org_id", "workspace_id"),
     )
 
 

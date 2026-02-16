@@ -46,10 +46,11 @@ class Workspace:
         self._slug = slug
         self._org_id = org_id or os.environ.get("SAYOU_ORG_ID") or "local"
         self._user_id = user_id or os.environ.get("SAYOU_USER_ID") or "default-user"
+        from sayou.config import _SAYOU_HOME
         self._database_url = (
             database_url
             or os.environ.get("SAYOU_DATABASE_URL")
-            or "sqlite+aiosqlite:///./sayou.db"
+            or f"sqlite+aiosqlite:///{_SAYOU_HOME / 'sayou.db'}"
         )
         self._s3_bucket = s3_bucket
         self._s3_region = s3_region
@@ -77,6 +78,9 @@ class Workspace:
         if is_sqlite:
             engine_kwargs["connect_args"] = {"check_same_thread": False}
             engine_kwargs["poolclass"] = StaticPool
+            # Auto-create directory for SQLite databases
+            from sayou.catalog.database import _ensure_sqlite_dir
+            _ensure_sqlite_dir(self._database_url)
 
         self._engine = create_async_engine(self._database_url, **engine_kwargs)
         self._session_factory = async_sessionmaker(
@@ -272,6 +276,128 @@ class Workspace:
         return await self._service.read_section(
             self._org_id, self._user_id, self._slug, path, line_start, line_end,
         )
+
+    # ── Schema & Auto-Metadata ────────────────────────────────────
+
+    async def schema(self) -> dict:
+        """Discover frontmatter schema across all files."""
+        await self._ensure_open()
+        return await self._service.get_schema(
+            self._org_id, self._user_id, self._slug,
+        )
+
+    async def refresh_schema(self) -> dict:
+        """Refresh the cached schema."""
+        await self._ensure_open()
+        return await self._service.refresh_schema(
+            self._org_id, self._user_id, self._slug,
+        )
+
+    async def generate_metadata(self, path: str) -> dict:
+        """Generate _auto_ metadata for a single file via LLM."""
+        await self._ensure_open()
+        return await self._service.generate_metadata(
+            self._org_id, self._user_id, self._slug, path,
+        )
+
+    async def bulk_generate_metadata(
+        self, *, path_pattern: str | None = None
+    ) -> dict:
+        """Bulk generate _auto_ metadata for all files or matching pattern."""
+        await self._ensure_open()
+        return await self._service.bulk_generate_metadata(
+            self._org_id, self._user_id, self._slug,
+            path_pattern=path_pattern,
+        )
+
+    # ── Semantic Search ────────────────────────────────────────────
+
+    async def semantic_search(self, query: str, *, top_k: int = 10) -> dict:
+        """Search files by meaning using vector embeddings."""
+        await self._ensure_open()
+        return await self._service.semantic_search(
+            self._org_id, self._user_id, self._slug, query, top_k=top_k,
+        )
+
+    async def reindex_embeddings(self) -> dict:
+        """Recompute embeddings for all files."""
+        await self._ensure_open()
+        return await self._service.reindex_embeddings(
+            self._org_id, self._user_id, self._slug,
+        )
+
+    # ── Links / Knowledge Graph ────────────────────────────────────
+
+    async def links(self, path: str) -> dict:
+        """Get outgoing and incoming links for a file."""
+        await self._ensure_open()
+        return await self._service.get_links(
+            self._org_id, self._user_id, self._slug, path,
+        )
+
+    async def add_link(
+        self, source_path: str, target_path: str, *,
+        link_type: str = "reference", context: str | None = None,
+    ) -> dict:
+        """Manually add a link between two files."""
+        await self._ensure_open()
+        return await self._service.add_link(
+            self._org_id, self._user_id, self._slug,
+            source_path, target_path, link_type=link_type, context=context,
+        )
+
+    async def remove_link(
+        self, source_path: str, target_path: str, *,
+        link_type: str = "reference",
+    ) -> dict:
+        """Remove a specific link."""
+        await self._ensure_open()
+        return await self._service.remove_link(
+            self._org_id, self._user_id, self._slug,
+            source_path, target_path, link_type=link_type,
+        )
+
+    async def traverse(self, path: str, *, depth: int = 1) -> dict:
+        """BFS graph traversal from a starting path."""
+        await self._ensure_open()
+        return await self._service.traverse_graph(
+            self._org_id, self._user_id, self._slug, path, depth=depth,
+        )
+
+    async def graph(self) -> dict:
+        """Get workspace-level graph statistics."""
+        await self._ensure_open()
+        return await self._service.graph_summary(
+            self._org_id, self._user_id, self._slug,
+        )
+
+    # ── Chunks ──────────────────────────────────────────────────────
+
+    async def chunks(self, path: str) -> dict:
+        """Get chunk outline for a file."""
+        await self._ensure_open()
+        return await self._service.get_chunks(
+            self._org_id, self._user_id, self._slug, path,
+        )
+
+    async def chunk(self, path: str, chunk_index: int) -> dict:
+        """Read a specific chunk by index."""
+        await self._ensure_open()
+        return await self._service.get_chunk(
+            self._org_id, self._user_id, self._slug, path, chunk_index,
+        )
+
+    async def search_chunks(
+        self, query: str, *, path_pattern: str | None = None, limit: int = 20
+    ) -> dict:
+        """Search chunks by content."""
+        await self._ensure_open()
+        return await self._service.search_chunks(
+            self._org_id, self._user_id, self._slug, query,
+            path_pattern=path_pattern, limit=limit,
+        )
+
+    # ── KV Store ──────────────────────────────────────────────────
 
     async def kv_get(self, key: str) -> dict:
         """Get a value from the KV store."""
