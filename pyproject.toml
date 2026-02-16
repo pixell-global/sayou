@@ -5,10 +5,24 @@ build-backend = "hatchling.build"
 [project]
 name = "sayou"
 version = "0.1.0"
-description = "The persistent workspace for AI agents"
+description = "A file-system inspired context store for AI agents"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
+authors = [
+    { name = "Pixell", email = "kevin_yum@pixell.global" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+
 dependencies = [
     "mcp>=1.8.0",
     "sqlalchemy[asyncio]>=2.0.0",
@@ -21,6 +35,12 @@ dependencies = [
     "fastapi>=0.110.0",
     "httpx>=0.27.0",
 ]
+
+[project.urls]
+Homepage = "https://sayou.dev"
+Repository = "https://github.com/pixell-global/sayou"
+Documentation = "https://github.com/pixell-global/sayou#readme"
+Issues = "https://github.com/pixell-global/sayou/issues"
 
 [project.optional-dependencies]
 dev = [
