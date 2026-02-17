@@ -216,6 +216,61 @@ sayou status    # Show diagnostic info
 | [`multi_agent.py`](examples/multi_agent.py) | Multi-agent collaboration with shared workspace |
 | [`research_agent.py`](examples/research_agent.py) | All methods exercised — the comprehensive reference |
 
+## Reference Agent
+
+sayou ships with a reference agent server — a multi-turn assistant that can search, read, write, and research using your workspace. It's a complete working example of building an agent on sayou.
+
+### Quick start
+
+```bash
+# Install with agent dependencies
+pip install sayou[agent]
+
+# Configure (copy and fill in your OpenAI key)
+cp agent/.env.example .env
+
+# Run the agent server
+python -m sayou.agent
+```
+
+The agent runs on `http://localhost:9008` with a streaming SSE endpoint at `POST /chat/stream`.
+
+### What the agent can do
+
+| Capability | How it works |
+|------------|-------------|
+| **Answer questions** | Searches workspace first, falls back to web search |
+| **Research topics** | Multiple web searches, extracts facts, saves structured findings |
+| **Store knowledge** | Writes files with YAML frontmatter, section headings, source citations |
+| **Execute code** | Optional E2B sandbox for Python and bash (set `SAYOU_AGENT_E2B_API_KEY`) |
+
+### Run benchmarks
+
+```bash
+# Start agent in one terminal
+python -m sayou.agent
+
+# Quick pass/fail eval
+python -m sayou.agent.benchmarks.eval
+
+# Detailed scoring (0-10 per capability)
+python -m sayou.agent.benchmarks.eval_full
+```
+
+### Architecture
+
+```
+Client → FastAPI (port 9008)
+         ↓
+      Orchestrator
+         ├─ LLMProvider (OpenAI streaming + tool calls)
+         ├─ ToolFactory
+         │  ├─ workspace_search/read/list/write (→ sayou SDK)
+         │  ├─ web_search (→ Tavily API, optional)
+         │  └─ execute_bash/python (→ E2B sandbox, optional)
+         └─ SandboxManager (per-session isolation, auto-cleanup)
+```
+
 ## Installation Options
 
 ```bash
@@ -227,6 +282,9 @@ pip install sayou[api]
 
 # With S3 storage
 pip install sayou[s3]
+
+# With reference agent server
+pip install sayou[agent]
 
 # Full installation (all features)
 pip install sayou[all]
