@@ -25,6 +25,8 @@ env/
 # Environment
 .env
 .env.*
+!.env.example
+!agent/.env.example
 
 # Testing
 .pytest_cache/
