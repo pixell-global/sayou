@@ -1,0 +1,387 @@
+{
+  "scenario_id": "scenario-02",
+  "title": "Investigate User Churn Spike",
+  "domain": "data-analytics",
+  "category": "investigate",
+  "description": "A product manager notices a spike in user churn and asks their AI agent to investigate. Over 7 sessions, the agent analyzes data, identifies root causes, proposes solutions, and helps draft a report for leadership.\n",
+  "sessions": [
+    {
+      "id": "s1",
+      "day": 1,
+      "time": null,
+      "user_request": "Our monthly churn rate jumped from 4.2% to 7.8% in January. Can you help me figure out why?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ok so our monthly churn rate spiked from 4.2% to 7.8% in January. Can you help me figure out why this happened? I'm wondering if it's something specific to that month or a trend we missed..."
+        },
+        {
+          "role": "assistant",
+          "content": "Alright, let's start by defining what we mean by 'churn'. Are we looking at users who haven't logged in for 30 days, or should we focus on those who haven't done any meaningful actions in that time? The latter might give us a clearer picture."
+        },
+        {
+          "role": "user",
+          "content": "Hmm, good point. Just because someone logs in doesn't mean they're engaged... Let's define churn as no meaningful action in 30 days—makes sense since some users might log in out of habit but not actually use the product. What data sources do we have available for this?"
+        },
+        {
+          "role": "assistant",
+          "content": "We can pull data from our events table, users table, and subscriptions table. Using BigQuery, we can analyze the engagement patterns. We'll also want to cross-check with Looker for any visualizations that could highlight trends."
+        },
+        {
+          "role": "user",
+          "content": "Wait, why Looker? Couldn't we just use BigQuery for the analysis? Not sure if we need both unless there's a specific use..."
+        },
+        {
+          "role": "assistant",
+          "content": "You're right—BigQuery should suffice for the initial analysis. Looker would only be useful if we need to visualize trends for the team later. For now, let's focus on querying in BigQuery. Here's a query to get us started:\n\n```sql\nSELECT \n  COUNT(user_id) AS churned_users, \n  COUNT(DISTINCT user_id) AS active_users,\n  COUNT(user_id) * 100.0 / COUNT(DISTINCT user_id) AS churn_rate\nFROM \n  events\nWHERE \n  event_date BETWEEN '2026-01-01' AND '2026-01-31'\n  AND NOT EXISTS (\n    SELECT 1 FROM events e2 \n    WHERE e2.user_id = events.user_id \n    AND e2.event_date > '2025-12-31'\n    AND meaningful_action = TRUE\n  )\n```\n\nThis query pulls data for January 2026, where churn was 7.8% (1,247 churned users out of 15,987 active users). We'll compare it to previous months, like December 2025's 4.3%, to establish a baseline."
+        },
+        {
+          "role": "user",
+          "content": "So, the baseline churn was around 4.1% on average over Q3-Q4 2025. This jump is pretty significant... We should also consider external factors like market changes or product issues. Let's run this query and see what the numbers tell us."
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "day": 2,
+      "time": null,
+      "user_request": "Can you break down the churned users by segment? I want to know if it's hitting everyone or specific groups.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ok so I’ve been diving into the churn metrics from our last discussion—remember, we defined churn as no meaningful action in 30 days? Anyway, can you break down the churned users by segment? I want to see if we're looking at a broad issue or if it’s more targeted."
+        },
+        {
+          "role": "assistant",
+          "content": "Sure thing. I've segmented the churn data by plan tier, signup cohort, geography, and usage level. Here's what I've found:\n\n- **Free tier**: The churn has increased significantly, now at 14.2%, up from 6.1%.\n- **Pro tier**: Slight increase, now 2.4% from 2.1%.\n- **Enterprise**: Stable at 0.8%.\n- **November 2025 cohort**: Churn spiked to 22% compared to 8% in the October cohort.\n- **Geographic breakdown**:\n  - **APAC**: 11.3% churn\n  - **North America**: 5.2% churn\n  - **Europe**: 4.8% churn\n  - **Japan** specifically is quite high, with 15.7% churn."
+        },
+        {
+          "role": "user",
+          "content": "Hmm, that’s interesting—but why do you think the free-tier users and the APAC region are seeing such high churn? Especially November... could it be related to a specific feature release or a market factor in that region?"
+        },
+        {
+          "role": "assistant",
+          "content": "That's a good point. It could be related to a feature release or even a promotional offer that attracted less engaged users initially. For APAC, it’s worth considering any regional-specific changes or competition that might have affected us. I’d recommend looking into any marketing campaigns or product updates around November, especially those targeting APAC and free-tier users."
+        },
+        {
+          "role": "user",
+          "content": "I guess we should also consider if there were any service issues—like downtime—in those regions around that time. Let's check the support tickets and infrastructure logs, just to be thorough."
+        },
+        {
+          "role": "assistant",
+          "content": "Good idea. I’ll pull the logs and ticket data for that period and see if there’s anything that stands out. It could help us understand if there were disruptions affecting user experience in those segments."
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "day": 3,
+      "time": null,
+      "user_request": "What happened in November that brought in users who churn so fast? And why APAC specifically?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ok so about that November churn issue—I've been digging into the APAC user base and trying to figure out why those users are dropping off so quickly. We already know it was free-tier users from November, but why specifically APAC? Is it something with our marketing campaigns?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yeah, there's a correlation with a TikTok marketing campaign we ran in Japan during November. The campaign ran from November 12 to 25 with a $45K spend, bringing in 3,200 signups. However, these users only had an average session time of 1.2 minutes compared to 8.5 minutes for organic signups. Additionally, only 12% of the TikTok cohort completed onboarding, versus 67% for organic users."
+        },
+        {
+          "role": "user",
+          "content": "Wait, are you saying we spent $14.06 per signup on that campaign and it's not even bringing in users who stick around? That seems like a poor investment...especially if they're not even completing onboarding. Why wasn't there any localization for the Japanese market? We can't expect them to use an English app effectively."
+        },
+        {
+          "role": "assistant",
+          "content": "That's right, the cost per signup was $14.06, and since only a few stayed active after 60 days, the cost per retained user ended up being $187.50. As for localization, it appears we overlooked that aspect. The app is English-only, which likely caused Japanese users from the TikTok campaign to bounce after encountering the language barrier."
+        },
+        {
+          "role": "user",
+          "content": "Got it...so our TikTok campaign did drive signups, but with very low intent—users weren't engaging deeply. We should've thought of localization from the start. What can we do differently to prevent this from happening again? Maybe better targeting or ensuring localization before launching in new regions?"
+        },
+        {
+          "role": "assistant",
+          "content": "For future campaigns, focusing on localized content and ensuring the app is fully accessible in the local language could help. Also, refining our targeting to reach higher intent users might reduce churn. It could be helpful to segment our campaigns and test different approaches in smaller regions before scaling up."
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "day": 5,
+      "time": null,
+      "user_request": "Are there any other factors? I don't want to blame everything on one campaign.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ok so we've pinpointed the TikTok campaign from November and the lack of localization for Japan, but are there other factors we might be overlooking? I don't want to blame everything on one campaign alone—seems too simplistic given the jump from 4.2% to 7.8%."
+        },
+        {
+          "role": "assistant",
+          "content": "You're right; it's often not just one thing. I looked into product changes around December and January. Found a couple of things. First, there was an A/B test on the pricing page that started on Dec 15. The variant B in that test accidentally removed the 20% annual discount badge, which led to a 31% lower conversion rate from free to pro."
+        },
+        {
+          "role": "user",
+          "content": "Wait, why was that not caught by the growth team earlier? That seems like a big miss..."
+        },
+        {
+          "role": "assistant",
+          "content": "The test was intended to run for a short time but wasn't flagged for review until now. It's still running actually. I also found an onboarding flow regression. A deploy on Jan 2 broke the progress indicator at step 3/5, causing many users to abandon the process thinking it was stuck. This bug affected 40% of new signups for 11 days until it was fixed on Jan 13."
+        },
+        {
+          "role": "user",
+          "content": "Ah, that could definitely add up. The A/B test and this onboarding issue—how much of the churn increase can we attribute to these?"
+        },
+        {
+          "role": "assistant",
+          "content": "Based on the data, the combined impact of these issues is estimated to be about 1.2 percentage points of the 3.6 percentage point increase in churn. Here's the breakdown: \n\n- A/B test on pricing page started Dec 15\n- Variant B removed 20% annual discount badge\n- Variant B: 31% lower free-to-pro conversion\n- Onboarding bug: Jan 2-13 (11 days)\n- Bug affected progress indicator at step 3\n- 40% of new signups hit the bug"
+        },
+        {
+          "role": "user",
+          "content": "That makes sense. So, after the perf fix we did on Jan 13, did we see any immediate improvement in conversions or retention?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yes, we saw a correction in the onboarding completion rate almost immediately after the fix. Retention seems to be stabilizing, though it'll take another cycle to see the full impact."
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "day": 7,
+      "time": null,
+      "user_request": "What should we do about all this? I need recommendations.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ok so, after digging into all those churn reasons from before—TikTok campaigns, no localization, that pricing page mess—what should we do about all this? I need recommendations we can actually act on."
+        },
+        {
+          "role": "assistant",
+          "content": "Alright, based on what we've found, a tiered approach could be effective. We can break this down into immediate fixes, 30-day actions, and quarterly initiatives. Here's a draft of the recommendations document:\n\n---\n\n**Recommendations for Reducing Churn**\n\n*Immediate Actions:*\n- Kill the pricing A/B test and restore the annual discount badge.\n- Verify that the onboarding bug fix is deployed.\n\n*30-Day Actions:*\n- Add Japanese localization for core flows (signup, onboarding, dashboard).\n- Implement campaign quality scoring to flag signups with less than 2 minutes in their first session.\n\n*Quarterly Initiatives:*\n- Build a localization pipeline for the top 5 APAC markets.\n- Revise the free tier to require email verification before granting full access.\n\n*Estimated Churn Reduction:*\n- 2.5 percentage points from immediate fixes.\n- 1.5 percentage points from 30-day actions.\n\n---\n\nWhat do you think about this structure?"
+        },
+        {
+          "role": "user",
+          "content": "hmm... the quarterly initiatives seem like they might take a while—do we have the resources for a full localization pipeline? And about the email verification, won't that increase friction for new users? I'm not sure about that."
+        },
+        {
+          "role": "assistant",
+          "content": "Good points. For the localization pipeline, it's definitely a resource-intensive task. We might need to partner with an external localization service to handle the initial workload and then plan to bring it in-house as we grow. As for the email verification, the idea is to prevent low-intent signups, which seemed to contribute to higher churn. But we can monitor the early impact and adjust if it creates too much friction."
+        },
+        {
+          "role": "user",
+          "content": "Right, makes sense... so we should—actually wait, let me think—okay, so we should start with the immediate fixes for now and get the leadership team onboard with the 30-day actions. For the quarterly items, let's maybe draft a more detailed proposal to assess feasibility."
+        },
+        {
+          "role": "assistant",
+          "content": "That sounds like a solid plan. Focusing on the immediate fixes first will give us quick wins and help build confidence for the more strategic changes. I'll help draft that detailed proposal for the quarterly initiatives so we can evaluate resources and timelines better."
+        }
+      ]
+    },
+    {
+      "id": "s6",
+      "day": 8,
+      "time": null,
+      "user_request": "Can you draft a summary for the leadership team meeting tomorrow?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ok so for tomorrow's leadership meeting, we need a summary of the churn investigation. I remember we identified three major causes and some recommendations... can you draft that up? I want to be sure we cover the financial impact and the immediate actions we discussed."
+        },
+        {
+          "role": "assistant",
+          "content": "Sure, here's a draft for the executive summary:\n\n**Title: January Churn Investigation — Root Cause Analysis**\n\n**Key Finding:** 85% of the excess churn traced to three causes.\n\n- **Cause 1 (45%):** TikTok campaign in Japan drove 3,200 low-intent signups.\n- **Cause 2 (35%):** Onboarding bug from Jan 2-13 affected 40% of new users.\n- **Cause 3 (20%):** Pricing A/B test removed annual discount, reducing conversion.\n\n**Financial Impact:** Estimated $180K in lost annual revenue.\n\n**Recommended Actions:**\n- **Immediate:** Revert pricing page changes and fix onboarding bug.\n- **30-day:** Launch Japanese localization and review all onboarding processes.\n- **Quarterly:** Redesign user acquisition strategy, focusing on high-intent channels.\n\nLet me know if anything needs tweaking."
+        },
+        {
+          "role": "user",
+          "content": "wait, shouldn't we mention the geographic concentration more? I think we should emphasize the APAC impact a bit more since that's where the TikTok campaign hit hardest... it might help in framing future strategies."
+        },
+        {
+          "role": "assistant",
+          "content": "Good point. We could add that under the TikTok campaign cause:\n\n- **Cause 1 (45%):** TikTok campaign in Japan drove 3,200 low-intent signups, primarily affecting the APAC region.\n\nThis highlights the geographic concentration and can guide future marketing strategies. Does this adjustment work for you?"
+        },
+        {
+          "role": "user",
+          "content": "yeah, that captures it better. Also, in the recommendations, we should—actually wait, I was thinking we might want to include something about monitoring churn more closely in real-time... can we add a mention of implementing better analytics tools?"
+        },
+        {
+          "role": "assistant",
+          "content": "Absolutely, we can include a line in the quarterly initiatives:\n\n- **Quarterly:** Redesign user acquisition strategy, focusing on high-intent channels, and implement enhanced real-time churn analytics tools.\n\nThis addition should help us stay ahead of similar issues in the future."
+        }
+      ]
+    },
+    {
+      "id": "s7",
+      "day": 10,
+      "time": null,
+      "user_request": "The CEO asked in the meeting: what's our churn rate if we exclude the TikTok campaign users? And can you send a follow-up email with that number?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ok so the CEO wants to know our churn rate without the TikTok campaign users—can you dig into that and send over an email with the numbers?"
+        },
+        {
+          "role": "assistant",
+          "content": "Sure, let's recalculate that churn rate. Excluding the TikTok campaign users, our January churn rate was 5.1%. This is a decrease from the 7.8% we initially reported, but it's still higher than the 4.2% baseline we saw before. The remaining elevation is due to the onboarding bug, which contributed 0.6 percentage points, and the pricing test, which added another 0.3 percentage points. Both of those issues have been resolved."
+        },
+        {
+          "role": "user",
+          "content": "Hmm, wait, why is it still 5.1%? I thought fixing the onboarding bug and pricing test would bring it closer to 4.2%... Are we sure those fixes were fully effective?"
+        },
+        {
+          "role": "assistant",
+          "content": "It's a good point. The fixes should indeed help, but it might take some time for the changes to reflect in user behavior. Plus, there could be residual effects from users who experienced these issues before the fixes were implemented. We should monitor the churn over the next few months to see if it trends back towards the baseline."
+        },
+        {
+          "role": "user",
+          "content": "Alright, makes sense. Let's keep an eye on it. Could you draft that email to the CEO with the adjusted numbers?"
+        },
+        {
+          "role": "assistant",
+          "content": "Here's the draft:\n\n---\n\n**To:** ceo@company.com  \n**Subject:** Follow-up — Adjusted January Churn Numbers  \n\nHi [CEO's Name],\n\nFollowing our recent discussion, I've recalculated the churn rate for January, excluding the TikTok campaign users. The adjusted churn rate is 5.1%. The remaining elevation compared to our baseline is due to two factors: the onboarding bug (0.6pp) and a pricing test (0.3pp), both of which have been resolved.\n\nPlease let me know if there's anything else you need.\n\nBest,  \n[Your Name]  \n\n---"
+        }
+      ]
+    }
+  ],
+  "qa_pairs": [
+    {
+      "question": "What was the January churn rate?",
+      "answer": "7.8%",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How much did the TikTok campaign cost?",
+      "answer": "$45K",
+      "evidence_sessions": [
+        "s3"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What was the churn rate for free tier users in January?",
+      "answer": "14.2%",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How long was the onboarding bug live before it was fixed?",
+      "answer": "11 days, from January 2 to January 13",
+      "evidence_sessions": [
+        "s4"
+      ],
+      "type": "fact_recall",
+      "difficulty": "detail"
+    },
+    {
+      "question": "Why was churn defined as 'no meaningful action in 30 days' instead of 'no login'?",
+      "answer": "Some users log in from habit but don't actually use the product. Login-based churn undercounts true disengagement.",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "Why were recommendations split into three tiers?",
+      "answer": "Some fixes are immediate (kill A/B test, verify bug fix), others need 30 days (localization, campaign scoring), and some are quarterly initiatives. Tiers help leadership understand urgency.",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "Why did the November signup cohort have such high churn?",
+      "answer": "A TikTok campaign in Japan from Nov 12-25 drove 3,200 low-intent signups. These users had 1.2 minute avg sessions vs 8.5 for organic, and only 12% completed onboarding because the app had no Japanese localization.",
+      "evidence_sessions": [
+        "s2",
+        "s3"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "What was wrong with the pricing page?",
+      "answer": "An A/B test started Dec 15 where variant B accidentally removed the 20% annual discount badge, causing 31% lower free-to-pro conversion. The test was still running and hadn't been caught.",
+      "evidence_sessions": [
+        "s4"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What was the churn rate after excluding the TikTok campaign impact?",
+      "answer": "5.1%, still elevated vs the 4.2% baseline due to the onboarding bug and pricing test",
+      "evidence_sessions": [
+        "s1",
+        "s3",
+        "s7"
+      ],
+      "type": "cross_session",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "What percentage of the excess churn was caused by technical issues vs marketing issues?",
+      "answer": "55% from technical issues (onboarding bug 35% + pricing A/B test 20%) and 45% from the TikTok marketing campaign",
+      "evidence_sessions": [
+        "s6"
+      ],
+      "type": "cross_session",
+      "difficulty": "detail"
+    },
+    {
+      "question": "How much did it actually cost to acquire each retained user from the TikTok campaign?",
+      "answer": "$187.50 per retained user, compared to $14.06 per signup",
+      "evidence_sessions": [
+        "s3"
+      ],
+      "type": "cross_session",
+      "difficulty": "detail"
+    },
+    {
+      "question": "In what order were the three root causes discovered?",
+      "answer": "First the TikTok campaign correlation (day 3), then the pricing A/B test and onboarding bug (day 5)",
+      "evidence_sessions": [
+        "s3",
+        "s4"
+      ],
+      "type": "temporal",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "What adjusted churn number was sent to the CEO?",
+      "answer": "5.1% — January churn excluding TikTok campaign signups",
+      "evidence_sessions": [
+        "s7"
+      ],
+      "type": "communication",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What financial impact was reported to leadership?",
+      "answer": "Estimated $180K in lost annual revenue",
+      "evidence_sessions": [
+        "s6"
+      ],
+      "type": "communication",
+      "difficulty": "single-hop"
+    }
+  ],
+  "persona": {
+    "role": "Product manager, 3 years experience, former data analyst",
+    "communication_style": "verbose and analytical, asks lots of follow-up questions, thinks out loud in messages, uses em-dashes and parentheticals heavily",
+    "quirks": [
+      "often starts messages mid-thought with 'so' or 'ok so'",
+      "references specific numbers and percentages from memory (sometimes slightly wrong)",
+      "uses '...' when trailing off to think"
+    ],
+    "context": "Healthcare SaaS startup in Toronto, 40-person company, patient scheduling product serving clinics across Canada"
+  }
+}

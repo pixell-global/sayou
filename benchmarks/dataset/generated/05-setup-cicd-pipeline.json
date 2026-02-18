@@ -1,0 +1,327 @@
+{
+  "scenario_id": "scenario-05",
+  "title": "Set Up CI/CD Pipeline for a Monorepo",
+  "domain": "devops",
+  "category": "operate",
+  "description": "A platform engineer sets up CI/CD for a monorepo containing 3 services (API, web frontend, worker). Over 6 sessions, the agent configures GitHub Actions, Docker builds, environment management, and monitoring.\n",
+  "sessions": [
+    {
+      "id": "s1",
+      "day": 1,
+      "time": null,
+      "user_request": "We have a monorepo with 3 services: api/ (Python/FastAPI), web/ (Next.js), and worker/ (Python/Celery). I need CI/CD with GitHub Actions. Only changed services should build.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so I've got this monorepo with api, web, and worker dirs. Need CI/CD using GitHub Actions. Only want to build what's changed. How do we start? 🤔"
+        },
+        {
+          "role": "assistant",
+          "content": "Alright, for a monorepo, one way is to use path-based triggering. The GitHub Actions' native path filters work only on push events, but there's this action called dorny/paths-filter that works on both push and PRs. It allows mapping paths to named outputs, which is handy. Thoughts?"
+        },
+        {
+          "role": "user",
+          "content": "Hmm, why not just use something like nx affected or turborepo? I heard they can handle this too."
+        },
+        {
+          "role": "assistant",
+          "content": "Good question! Nx and turborepo are great, but they might be overkill for our setup, especially if we're mainly concerned with straightforward path-based triggering. dorny/paths-filter is lighter and specifically aims at path-based change detection, which keeps things simple. Here's a sample GitHub Actions workflow using it:\n\n```yaml\nname: CI\n\non:\n  push:\n    branches:\n      - main\n  pull_request:\n\njobs:\n  paths:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n      - uses: dorny/paths-filter@v3\n        id: changes\n        with:\n          filters: |\n            api:\n              - 'api/**'\n            web:\n              - 'web/**'\n            worker:\n              - 'worker/**'\n\n  api:\n    if: steps.changes.outputs.api == 'true'\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n      - run: make lint\n      - run: make test\n      - run: docker build -t api .\n      - run: docker push <ECR_REPO>/api\n\n  web:\n    if: steps.changes.outputs.web == 'true'\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n      - run: npm install\n      - run: npm run lint\n      - run: npm test\n      - run: docker build -t web .\n      - run: docker push <ECR_REPO>/web\n\n  worker:\n    if: steps.changes.outputs.worker == 'true'\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n      - run: make lint\n      - run: make test\n      - run: docker build -t worker .\n      - run: docker push <ECR_REPO>/worker\n```\n\nThis sets up three parallel job groups, each only running if its directory has changed."
+        },
+        {
+          "role": "user",
+          "content": "okay, that makes sense. Now, what about envs? We need dev, staging, and prod. How do we configure that?"
+        },
+        {
+          "role": "assistant",
+          "content": "For environments, here's a setup we could use:\n\n**Environment Strategy Document**\n\n- **dev**: Auto-deploys from the main branch to allow quick iterations. It runs on an AWS t3.medium instance.\n- **staging**: Requires a manual trigger and mirrors the production configuration. It runs on an AWS t3.large instance.\n- **prod**: Requires approval from the @platform-team before deployment to prevent accidental deploys. It runs on an AWS t3.xlarge instance.\n\nAll environments are deployed on ECS Fargate. Secrets are stored in AWS SSM Parameter Store, scoped by environment.\n\nThis way, we can control deployments at different stages and ensure stability in production."
+        },
+        {
+          "role": "user",
+          "content": "cool, ngl that's pretty neat. I'll try setting this up and see how it goes. Thanks! 👍"
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "day": 3,
+      "time": null,
+      "user_request": "Set up Docker builds. The API and worker share a common Python library in lib/shared/.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "alright, trying to set up Docker builds for our services. remember we talked about using GitHub Actions for CI/CD? so, how do we handle the shared lib when building?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yeah, so for the shared library in lib/shared/, we can set the Docker build context to the repo root. This way, we can COPY lib/shared/ into our service images without needing symlinks. Each service will have its own Dockerfile but use the same build context."
+        },
+        {
+          "role": "user",
+          "content": "hmm, why set the context to the root? couldn’t we just copy what's needed in each service's context?"
+        },
+        {
+          "role": "assistant",
+          "content": "Good question. Setting the context to the repo root ensures that the shared library is accessible to all services without having to manage multiple copies. This approach keeps things simple and efficient, especially with layer caching. Let's go over the Dockerfiles to see how it fits in."
+        },
+        {
+          "role": "assistant",
+          "content": "Here's how the Dockerfiles look for each service:\n\n**api/Dockerfile:**\n```dockerfile\nFROM python:3.11-slim AS base\n\nWORKDIR /app\n\nCOPY lib/shared/ /app/shared/\nCOPY api/ /app/api/\n\nRUN pip install -r /app/api/requirements.txt\n\nFROM base as final\n\nCMD [\"uvicorn\", \"api.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\n```\n\n**web/Dockerfile:**\n```dockerfile\nFROM node:20-alpine AS build\n\nWORKDIR /app\n\nCOPY web/ /app/web/\n\nRUN npm install && npm run build\n\nFROM nginx:alpine AS final\n\nCOPY --from=build /app/web/out /usr/share/nginx/html\n```\n\n**worker/Dockerfile:**\n```dockerfile\nFROM python:3.11-slim AS base\n\nWORKDIR /app\n\nCOPY lib/shared/ /app/shared/\nCOPY worker/ /app/worker/\n\nRUN pip install -r /app/worker/requirements.txt\n\nFROM base as final\n\nCMD [\"celery\", \"-A\", \"worker.main\", \"worker\"]\n```\n\nEach image is tagged with the git SHA and 'latest' for versioning. The final API image is about 180MB, down from 1.2GB, and the web image is around 45MB. 📉"
+        },
+        {
+          "role": "user",
+          "content": "ngl, shrinking the API image that much is impressive. 👍 so, does this mean we push to ECR with both git SHA and latest tags?"
+        },
+        {
+          "role": "assistant",
+          "content": "Exactly. Tagging with both the git SHA and 'latest' ensures we can track specific builds and always have an easily referenced current version. Once built, you can push these images to ECR and deploy from there."
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "day": 5,
+      "time": null,
+      "user_request": "Tests are slow. The API test suite takes 8 minutes. Can we speed up CI?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so API tests are taking like 8 mins, any way to make CI faster? i remember we talked about only building changed services, but still kinda slow"
+        },
+        {
+          "role": "assistant",
+          "content": "Yeah, we can definitely speed things up. First, your API test suite runs all 340 tests sequentially right now. Using pytest-xdist with 4 workers can split those tests and run them in parallel, cutting that time to about 2.5 minutes."
+        },
+        {
+          "role": "user",
+          "content": "wait, why 4 workers tho? can't we do more?"
+        },
+        {
+          "role": "assistant",
+          "content": "Good question 🤔. We could try more, but 4 is a safe start without overloading the machine we run on. We can adjust if needed. Also, we'll set up caching for dependencies—right now, pip install runs every time, which takes up 1.5 minutes. Using actions/cache for pip can save that time."
+        },
+        {
+          "role": "user",
+          "content": "makes sense, what about docker? we did those docker builds last time, anything there?"
+        },
+        {
+          "role": "assistant",
+          "content": "For Docker, we'll use docker/build-push-action with cache-to gha for Docker layer caching. This could save 2-3 minutes on rebuilds by not rebuilding unchanged layers. So, overall, your total CI time could drop from 14 minutes to around 5 minutes."
+        },
+        {
+          "role": "user",
+          "content": "sweet! so how does this look in the workflow file? ngl still learning how to set this up properly"
+        },
+        {
+          "role": "assistant",
+          "content": "Here's what the optimized CI workflow might look like:\n\n```yaml\nname: CI\n\non:\n  push:\n    paths-ignore:\n      - 'README.md'\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n    - uses: actions/checkout@v2\n\n    - name: Set up Python\n      uses: actions/setup-python@v2\n      with:\n        python-version: '3.9'\n\n    - name: Install dependencies\n      run: |\n        python -m pip install --upgrade pip\n        pip install pytest pytest-xdist\n    - uses: actions/cache@v2\n      with:\n        path: ~/.cache/pip\n        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}\n        restore-keys: |\n          ${{ runner.os }}-pip-\n\n    - name: Run tests\n      run: pytest -n 4\n\n  build:\n    runs-on: ubuntu-latest\n    steps:\n    - uses: actions/checkout@v2\n\n    - name: Set up Docker Buildx\n      uses: docker/setup-buildx-action@v1\n\n    - name: Cache Docker layers\n      uses: actions/cache@v2\n      with:\n        path: /tmp/.buildx-cache\n        key: ${{ runner.os }}-buildx-${{ github.sha }}\n        restore-keys: |\n          ${{ runner.os }}-buildx-\n\n    - name: Build and push Docker image\n      uses: docker/build-push-action@v2\n      with:\n        context: .\n        push: false\n        cache-from: type=gha,scope=buildx\n        cache-to: type=gha,scope=buildx,mode=max\n        tags: user/image:latest\n```\n\nWith these changes, PR checks should average around 3 minutes for only changed services."
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "day": 8,
+      "time": null,
+      "user_request": "Set up the deployment step. We use ECS Fargate.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so we're on the deployment step now. we use ECS Fargate, remember? how do we make sure each service deploys only when it changes? also, wanna setup notifications for when deployments happen."
+        },
+        {
+          "role": "assistant",
+          "content": "Yeah, let's build on that path-based triggering with dorny/paths-filter we talked about. For deploying with ECS Fargate, we'll use GitHub Actions. I'll set up a workflow that uses aws-actions/amazon-ecs-deploy-task-definition@v2. Here's a draft of the workflow file:\n\n```yaml\nname: Deploy\n\non:\n  push:\n    branches:\n      - main\n    paths:\n      - 'api/**'\n      - 'web/**'\n      - 'worker/**'\n\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout repository\n        uses: actions/checkout@v2\n\n      - name: Deploy to ECS\n        uses: aws-actions/amazon-ecs-deploy-task-definition@v2\n        with:\n          task-definition: deploy/task-defs/${{ env.SERVICE_NAME }}.json\n          service: ${{ env.SERVICE_NAME }}\n          cluster: my-cluster\n          wait-for-service-stability: true\n\n    env:\n      SERVICE_NAME: api  # Change dynamically based on paths\n```\n\nFor notifications, we can add a step to send messages to the #deploys channel in Slack using a webhook. What do you think of this setup?"
+        },
+        {
+          "role": "user",
+          "content": "wait, why use a task definition per service? can't we just have one and update it?"
+        },
+        {
+          "role": "assistant",
+          "content": "Good question. Each service has its own requirements and configurations, so separate task definitions allow us to manage those without conflicts. It also simplifies rolling deployments since each service can have its metrics and scaling policies. Having separate JSON files in `deploy/task-defs/` makes it easier to maintain. Does that make sense?"
+        },
+        {
+          "role": "user",
+          "content": "okay, makes sense. but how about the health checks and rollback? 🤔"
+        },
+        {
+          "role": "assistant",
+          "content": "For health checks, we'll set them up to hit the `/health` endpoint every 30 seconds with an unhealthy threshold of 3. This means if a service fails the health check 3 times, it triggers a rollback. We'll use a rolling deployment strategy with min 50% healthy and max 200% to ensure availability. If health checks fail consistently for 5 minutes, the deployment rolls back automatically. Here's how it'll look in the workflow:\n\n```yaml\n      - name: Set deployment configuration\n        run: |\n          echo \"HEALTH_CHECK_PATH='/health'\" >> $GITHUB_ENV\n          echo \"INTERVAL=30\" >> $GITHUB_ENV\n          echo \"THRESHOLD=3\" >> $GITHUB_ENV\n          echo \"MIN_HEALTHY=50\" >> $GITHUB_ENV\n          echo \"MAX_HEALTHY=200\" >> $GITHUB_ENV\n          echo \"ROLLBACK_THRESHOLD=300\" >> $GITHUB_ENV\n\n      - name: Notify Slack\n        uses: slackapi/slack-github-action@v1.16.0\n        with:\n          payload: '{\"text\":\"Deployment of ${{ env.SERVICE_NAME }} to ECS started.\"}'\n        env:\n          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}\n```\n\nThis configuration will help us manage stability during deployments. Anything else you're curious about?"
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "day": 10,
+      "time": null,
+      "user_request": "First real deploy went out but the worker service crashed. What happened?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so the first deploy went out, but the worker service crashed 🤔 what went wrong?"
+        },
+        {
+          "role": "assistant",
+          "content": "Looks like the Celery worker was OOM killed. We had its memory limit at 512MB, but with 4 prefork workers each around 200MB, it exceeded that under load."
+        },
+        {
+          "role": "user",
+          "content": "hmm okay, so should we just increase the memory limit or is there more to it?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yeah, increasing memory will help, but we also need to reduce the number of Celery workers. I suggest bumping the memory to 1024MB and reducing Celery workers from 4 to 2. Each will have more headroom that way."
+        },
+        {
+          "role": "user",
+          "content": "makes sense. but about the health checks, why didn't the worker pass those?"
+        },
+        {
+          "role": "assistant",
+          "content": "The worker didn't have a health check endpoint. ECS expects an HTTP response, but the worker had no server running. We can fix this by adding a simple Flask app to expose a /health endpoint."
+        },
+        {
+          "role": "user",
+          "content": "oh, nvm then, makes sense. what about monitoring? can we track mem usage too?"
+        },
+        {
+          "role": "assistant",
+          "content": "Definitely. We can log memory usage every 60 seconds. Here's how the updated worker config looks:\n\n```python\n# Dockerfile snippet for the worker\nFROM python:3.9\nWORKDIR /app\n\nCOPY worker/ .\nRUN pip install -r requirements.txt\n\nCMD [ \"sh\", \"-c\", \"celery -A tasks worker --loglevel=info --concurrency=2 & python health_check.py\" ]\n```\n\n```python\n# health_check.py\nfrom flask import Flask\napp = Flask(__name__)\n\n@app.route('/health')\ndef health_check():\n    return \"Worker is healthy\", 200\n\nif __name__ == '__main__':\n    app.run(host='0.0.0.0', port=8080)\n```\n\nAnd for memory logging:\n\n```python\n# memory_logger.py\nimport os, time\nimport psutil\n\nwhile True:\n    process = psutil.Process(os.getpid())\n    print(f\"Memory usage: {process.memory_info().rss / 1024 / 1024} MB\")\n    time.sleep(60)\n```\n```\nThis setup increases the memory, reduces workers, adds a health endpoint, and monitors memory usage."
+        }
+      ]
+    },
+    {
+      "id": "s6",
+      "day": 12,
+      "time": null,
+      "user_request": "Everything is stable now. Can you document the whole CI/CD setup so other engineers can maintain it?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "So, everything's stable rn. Can you document the CI/CD setup for the team to maintain it?"
+        },
+        {
+          "role": "assistant",
+          "content": "Sure thing! I'll create a detailed document. It'll cover everything from architecture to troubleshooting. Give me a moment to put it all together."
+        },
+        {
+          "role": "assistant",
+          "content": "Here's the CI/CD documentation:\n\n---\n\n# CI/CD Documentation\n\n## Architecture Overview\nWe use GitHub Actions to manage our CI/CD pipeline for our monorepo, consisting of three services:\n- **api/** (Python/FastAPI)\n- **web/** (Next.js)\n- **worker/** (Python/Celery)\n\nThe path-based triggering is handled using `dorny/paths-filter` action to ensure only changed services are built.\n\n## Workflows\n### Pipeline Stages\n1. **Lint**\n2. **Test**\n3. **Build**\n4. **Push**\n5. **Deploy**\n\n### Environments\n- **Dev**: Auto-deploy from the main branch\n- **Staging**: Manual trigger required\n- **Prod**: Requires approval\n\n## Secrets Management\nEnvironment variables are stored in AWS Systems Manager Parameter Store (SSM).\n\n## Troubleshooting\n- **Failed Deploys**: Check ECS logs for errors.\n- **OOM Kills**: Ensure proper memory allocation for the worker service.\n- **Slow CI**: Utilize `pytest-xdist` with parallelization and Docker layer caching.\n- **Cache Misses**: Ensure Docker and pip caches are correctly set up.\n\n## Manual Rollback\nFor a manual rollback, use:\n```\naws ecs update-service --force-new-deployment --service <service-name> --cluster <cluster-name> --task-definition <previous-task-def>\n```\n\n---\n\nLet me know if this covers what you need!"
+        },
+        {
+          "role": "user",
+          "content": "Looks solid but wait, about the OOM kills—shouldn't we have some alerts for that too? 🤔"
+        },
+        {
+          "role": "assistant",
+          "content": "Good point! We can set up CloudWatch alarms for memory usage. If the memory hits a certain threshold, it'll notify us via SNS or another alerting mechanism. Want me to add that to the documentation?"
+        },
+        {
+          "role": "user",
+          "content": "Yeah, add that in. Tbh, I wasn't sure if that was already covered. Thanks! 👍"
+        }
+      ]
+    }
+  ],
+  "qa_pairs": [
+    {
+      "question": "What tool is used for monorepo change detection in CI?",
+      "answer": "dorny/paths-filter@v3",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "Why wasn't nx or turborepo used for change detection?",
+      "answer": "dorny/paths-filter was chosen because native GitHub path filters only work on push (not PRs), and paths-filter works on both and maps paths to named outputs. nx and turborepo were considered but paths-filter was simpler for this use case.",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What are the three deployment environments and their trigger mechanisms?",
+      "answer": "Dev auto-deploys from main, staging requires manual dispatch, prod requires approval from @platform-team",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "fact_recall",
+      "difficulty": "detail"
+    },
+    {
+      "question": "How large is the final API Docker image?",
+      "answer": "~180MB, down from 1.2GB with a naive build",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How much did CI pipeline time improve?",
+      "answer": "From 14 minutes to 5 minutes for the full pipeline, and PR checks average 3 minutes",
+      "evidence_sessions": [
+        "s3"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "Why did the worker service crash on the first deploy?",
+      "answer": "Two issues: memory limit was 512MB but 4 Celery workers consumed ~200MB each exceeding the limit (OOM kill), and the worker had no HTTP health endpoint so ECS always marked it unhealthy.",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "What is the rollback procedure for a failed deployment?",
+      "answer": "Run aws ecs update-service --force-new-deployment with the previous task definition",
+      "evidence_sessions": [
+        "s6"
+      ],
+      "type": "artifact_content",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "Where are secrets stored and how are they scoped?",
+      "answer": "AWS SSM Parameter Store, scoped by environment",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What was done to fix the worker memory issue?",
+      "answer": "Increased memory from 512MB to 1024MB and reduced Celery prefork workers from 4 to 2, giving each ~400MB headroom",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How does the deployment handle failures?",
+      "answer": "Rolling deployment with min 50% healthy, max 200%. Automatic rollback if health check fails for 5 minutes. Notifications sent to #deploys Slack channel.",
+      "evidence_sessions": [
+        "s4"
+      ],
+      "type": "artifact_content",
+      "difficulty": "detail"
+    }
+  ],
+  "persona": {
+    "role": "Junior platform engineer, 1.5 years experience, self-taught",
+    "communication_style": "casual and curious, asks 'why' a lot, admits when confused, messages are short and sometimes fragmented",
+    "quirks": [
+      "uses emoji occasionally (thumbs up, thinking face) in technical discussions",
+      "says 'ngl' (not gonna lie) and 'nvm' when self-correcting",
+      "sometimes asks the same thing two different ways because they're unsure how to phrase it"
+    ],
+    "context": "EdTech startup in Nairobi, 15-person company, building an online learning platform for K-12 schools across East Africa"
+  }
+}

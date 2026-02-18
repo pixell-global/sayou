@@ -1,0 +1,264 @@
+id: scenario-02
+title: "Investigate User Churn Spike"
+domain: data-analytics
+category: investigate
+description: >
+  A product manager notices a spike in user churn and asks their AI agent
+  to investigate. Over 7 sessions, the agent analyzes data, identifies
+  root causes, proposes solutions, and helps draft a report for leadership.
+total_sessions: 7
+estimated_tokens: 14000
+
+persona:
+  role: "Product manager, 3 years experience, former data analyst"
+  communication_style: "verbose and analytical, asks lots of follow-up questions, thinks out loud in messages, uses em-dashes and parentheticals heavily"
+  quirks:
+    - "often starts messages mid-thought with 'so' or 'ok so'"
+    - "references specific numbers and percentages from memory (sometimes slightly wrong)"
+    - "uses '...' when trailing off to think"
+  context: "Healthcare SaaS startup in Toronto, 40-person company, patient scheduling product serving clinics across Canada"
+
+sessions:
+  - id: s1
+    day: 1
+    user_request: "Our monthly churn rate jumped from 4.2% to 7.8% in January. Can you help me figure out why?"
+    conversation_topics:
+      - Defining the churn metric (no login in 30 days)
+      - Identifying what data sources are available
+      - Planning the investigation approach
+    decisions:
+      - choice: "Define churn as no meaningful action in 30 days, not just no login"
+        reasoning: "Some users log in from habit but don't actually use the product. Login-based churn undercounts true disengagement."
+    artifacts:
+      - type: data
+        description: "Initial churn analysis query"
+        key_facts:
+          - "Query pulls from events table, users table, and subscriptions table"
+          - "Churn baseline: 4.1% average over Q3-Q4 2025"
+          - "January 2026 churn: 7.8% (1,247 churned users out of 15,987 active)"
+          - "December 2025 churn: 4.3% (normal range)"
+    entities: ["BigQuery", "Looker"]
+
+  - id: s2
+    day: 2
+    user_request: "Can you break down the churned users by segment? I want to know if it's hitting everyone or specific groups."
+    conversation_topics:
+      - Segmenting by plan tier, signup cohort, geography, and usage level
+      - Identifying which segments are most affected
+    discoveries:
+      - finding: "Churn concentrated in free-tier users who signed up in November"
+        detail: "Free tier churn went from 6.1% to 14.2%. Pro tier barely moved (2.1% to 2.4%). The November 2025 signup cohort has 22% churn vs 8% for October cohort."
+      - finding: "Geographic concentration in APAC region"
+        detail: "APAC churn at 11.3% vs 5.2% for NA and 4.8% for EU. Japan specifically at 15.7%."
+    artifacts:
+      - type: data
+        description: "Segment analysis results"
+        key_facts:
+          - "Free tier: 14.2% churn (was 6.1%)"
+          - "Pro tier: 2.4% churn (was 2.1%)"
+          - "Enterprise: 0.8% churn (unchanged)"
+          - "November 2025 cohort: 22% churn"
+          - "October 2025 cohort: 8% churn"
+          - "APAC: 11.3%, NA: 5.2%, EU: 4.8%"
+          - "Japan specifically: 15.7% churn"
+    builds_on: [s1]
+
+  - id: s3
+    day: 3
+    user_request: "What happened in November that brought in users who churn so fast? And why APAC specifically?"
+    conversation_topics:
+      - Correlating with marketing campaigns
+      - Investigating APAC-specific issues
+    discoveries:
+      - finding: "November TikTok campaign in Japan drove low-intent signups"
+        detail: "Marketing ran a viral TikTok campaign Nov 12-25 targeting Japanese users. Campaign spent $45K, brought in 3,200 signups. These users had avg session time of 1.2 minutes vs 8.5 minutes for organic signups."
+      - finding: "No Japanese localization"
+        detail: "App is English-only. Japanese users from the TikTok campaign hit the English UI and bounced. Only 12% of TikTok cohort completed onboarding vs 67% for organic."
+    artifacts:
+      - type: data
+        description: "Campaign correlation analysis"
+        key_facts:
+          - "TikTok campaign: Nov 12-25, 2025, $45K spend, 3,200 signups"
+          - "TikTok cohort avg session time: 1.2 minutes"
+          - "Organic cohort avg session time: 8.5 minutes"
+          - "TikTok cohort onboarding completion: 12%"
+          - "Organic onboarding completion: 67%"
+          - "Cost per signup from TikTok: $14.06"
+          - "Cost per retained user (still active after 60 days): $187.50"
+    builds_on: [s1, s2]
+    entities: ["TikTok", "Japan"]
+
+  - id: s4
+    day: 5
+    user_request: "Are there any other factors? I don't want to blame everything on one campaign."
+    conversation_topics:
+      - Looking at product changes in December-January
+      - Checking for technical issues
+    discoveries:
+      - finding: "Pricing page A/B test accidentally removed annual discount"
+        detail: "A/B test started Dec 15, variant B removed the 20% annual discount badge. Variant B showed 31% lower conversion from free to pro. Test was still running — not caught by the growth team."
+      - finding: "Onboarding flow regression"
+        detail: "A deploy on Jan 2 broke the progress indicator in the onboarding flow. Users couldn't see step 3/5, so many abandoned thinking the process was stuck. Bug affected 40% of new signups for 11 days until fix on Jan 13."
+    artifacts:
+      - type: data
+        description: "Secondary factors analysis"
+        key_facts:
+          - "A/B test on pricing page started Dec 15"
+          - "Variant B removed 20% annual discount badge"
+          - "Variant B: 31% lower free-to-pro conversion"
+          - "Onboarding bug: Jan 2-13 (11 days)"
+          - "Bug affected progress indicator at step 3"
+          - "40% of new signups hit the bug"
+          - "Combined impact estimated at 1.2 percentage points of the 3.6pp churn increase"
+    builds_on: [s1, s2, s3]
+
+  - id: s5
+    day: 7
+    user_request: "What should we do about all this? I need recommendations."
+    conversation_topics:
+      - Prioritizing fixes vs strategic changes
+      - Estimating impact of each recommendation
+    decisions:
+      - choice: "Three-tier recommendation: immediate fixes, 30-day actions, quarterly initiatives"
+        reasoning: "Some things can be fixed today (kill the A/B test, fix onboarding). Others need planning (Japanese localization). Presenting in tiers helps leadership understand urgency."
+    artifacts:
+      - type: document
+        description: "Recommendations document"
+        key_facts:
+          - "Immediate: Kill pricing A/B test, restore annual discount badge"
+          - "Immediate: Verify onboarding bug fix is deployed"
+          - "30-day: Add Japanese localization for core flows (signup, onboarding, dashboard)"
+          - "30-day: Implement campaign quality scoring — flag signups with <2min first session"
+          - "Quarterly: Build localization pipeline for top 5 APAC markets"
+          - "Quarterly: Revise free tier to require email verification before full access"
+          - "Estimated churn reduction: 2.5pp from immediate fixes, 1.5pp from 30-day actions"
+    builds_on: [s1, s2, s3, s4]
+
+  - id: s6
+    day: 8
+    user_request: "Can you draft a summary for the leadership team meeting tomorrow?"
+    artifacts:
+      - type: document
+        description: "Executive summary for leadership"
+        key_facts:
+          - "Title: January Churn Investigation — Root Cause Analysis"
+          - "Key finding: 85% of excess churn traced to three causes"
+          - "Cause 1 (45%): TikTok campaign in Japan drove 3,200 low-intent signups"
+          - "Cause 2 (35%): Onboarding bug Jan 2-13 affected 40% of new users"
+          - "Cause 3 (20%): Pricing A/B test removed annual discount, reducing conversion"
+          - "Financial impact: estimated $180K in lost annual revenue"
+          - "Recommended actions split into immediate, 30-day, and quarterly"
+    builds_on: [s1, s2, s3, s4, s5]
+    entities: ["leadership team"]
+
+  - id: s7
+    day: 10
+    user_request: "The CEO asked in the meeting: what's our churn rate if we exclude the TikTok campaign users? And can you send a follow-up email with that number?"
+    conversation_topics:
+      - Recalculating churn excluding TikTok cohort
+    artifacts:
+      - type: data
+        description: "Adjusted churn calculation"
+        key_facts:
+          - "Excluding TikTok cohort: January churn was 5.1% (vs 7.8% reported)"
+          - "Still elevated vs 4.2% baseline, explained by onboarding bug + pricing test"
+      - type: email
+        description: "Follow-up email to CEO"
+        key_facts:
+          - "Sent to ceo@company.com"
+          - "Subject: Follow-up — Adjusted January Churn Numbers"
+          - "Excluding TikTok campaign signups, January churn was 5.1%"
+          - "Remaining 0.9pp elevation attributed to onboarding bug (0.6pp) and pricing test (0.3pp)"
+          - "Both issues now resolved"
+    builds_on: [s1, s2, s3, s4, s5, s6]
+
+qa_pairs:
+  # Fact recall
+  - question: "What was the January churn rate?"
+    answer: "7.8%"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How much did the TikTok campaign cost?"
+    answer: "$45K"
+    evidence_sessions: [s3]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was the churn rate for free tier users in January?"
+    answer: "14.2%"
+    evidence_sessions: [s2]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How long was the onboarding bug live before it was fixed?"
+    answer: "11 days, from January 2 to January 13"
+    evidence_sessions: [s4]
+    type: fact_recall
+    difficulty: detail
+
+  # Decision reasoning
+  - question: "Why was churn defined as 'no meaningful action in 30 days' instead of 'no login'?"
+    answer: "Some users log in from habit but don't actually use the product. Login-based churn undercounts true disengagement."
+    evidence_sessions: [s1]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "Why were recommendations split into three tiers?"
+    answer: "Some fixes are immediate (kill A/B test, verify bug fix), others need 30 days (localization, campaign scoring), and some are quarterly initiatives. Tiers help leadership understand urgency."
+    evidence_sessions: [s5]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  # Discovery recall
+  - question: "Why did the November signup cohort have such high churn?"
+    answer: "A TikTok campaign in Japan from Nov 12-25 drove 3,200 low-intent signups. These users had 1.2 minute avg sessions vs 8.5 for organic, and only 12% completed onboarding because the app had no Japanese localization."
+    evidence_sessions: [s2, s3]
+    type: discovery_recall
+    difficulty: multi-hop
+
+  - question: "What was wrong with the pricing page?"
+    answer: "An A/B test started Dec 15 where variant B accidentally removed the 20% annual discount badge, causing 31% lower free-to-pro conversion. The test was still running and hadn't been caught."
+    evidence_sessions: [s4]
+    type: discovery_recall
+    difficulty: single-hop
+
+  # Cross-session
+  - question: "What was the churn rate after excluding the TikTok campaign impact?"
+    answer: "5.1%, still elevated vs the 4.2% baseline due to the onboarding bug and pricing test"
+    evidence_sessions: [s1, s3, s7]
+    type: cross_session
+    difficulty: multi-hop
+
+  - question: "What percentage of the excess churn was caused by technical issues vs marketing issues?"
+    answer: "55% from technical issues (onboarding bug 35% + pricing A/B test 20%) and 45% from the TikTok marketing campaign"
+    evidence_sessions: [s6]
+    type: cross_session
+    difficulty: detail
+
+  - question: "How much did it actually cost to acquire each retained user from the TikTok campaign?"
+    answer: "$187.50 per retained user, compared to $14.06 per signup"
+    evidence_sessions: [s3]
+    type: cross_session
+    difficulty: detail
+
+  # Temporal
+  - question: "In what order were the three root causes discovered?"
+    answer: "First the TikTok campaign correlation (day 3), then the pricing A/B test and onboarding bug (day 5)"
+    evidence_sessions: [s3, s4]
+    type: temporal
+    difficulty: multi-hop
+
+  # Communication
+  - question: "What adjusted churn number was sent to the CEO?"
+    answer: "5.1% — January churn excluding TikTok campaign signups"
+    evidence_sessions: [s7]
+    type: communication
+    difficulty: single-hop
+
+  - question: "What financial impact was reported to leadership?"
+    answer: "Estimated $180K in lost annual revenue"
+    evidence_sessions: [s6]
+    type: communication
+    difficulty: single-hop

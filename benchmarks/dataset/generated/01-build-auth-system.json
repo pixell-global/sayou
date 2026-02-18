@@ -1,0 +1,427 @@
+{
+  "scenario_id": "scenario-01",
+  "title": "Build User Authentication for a Web App",
+  "domain": "software-engineering",
+  "category": "build",
+  "description": "A developer asks their AI agent to implement authentication for a new web application. Over 6 sessions spanning two weeks, the system evolves from basic login to production-ready auth with email verification, password reset, and API documentation.\n",
+  "sessions": [
+    {
+      "id": "s1",
+      "day": 1,
+      "time": null,
+      "user_request": "I need to add authentication to my Express.js app. Users should be able to sign up and log in.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "need to add auth to my express app. looking at jwt vs session-based. frontend's a react spa on cdn, so thinking jwt might be better?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yeah, JWT with RS256 sounds like a good fit for a React SPA on a CDN. It's stateless, so we avoid the need for sticky sessions or a shared session store. RS256 is secure and works well with JWT. Want to see some auth middleware code?"
+        },
+        {
+          "role": "user",
+          "content": "makes sense. but what about password hashing? heard bcrypt's pretty standard but wasn’t argon2 supposed to be better?"
+        },
+        {
+          "role": "assistant",
+          "content": "Argon2 is solid but bcrypt remains the industry standard mainly due to its broad ecosystem support in Node.js. It's adaptive with its cost factor and is well-audited. Here's a quick breakdown of the auth middleware:\n\n```javascript\n// src/middleware/auth.js\nconst jwt = require('jsonwebtoken');\nconst fs = require('fs');\n\nconst publicKey = fs.readFileSync('./keys/public.pem');\nconst privateKey = fs.readFileSync('./keys/private.pem');\n\nconst authenticateJWT = (req, res, next) => {\n    const token = req.header('Authorization');\n    if (!token) return res.sendStatus(403);\n\n    jwt.verify(token, publicKey, { algorithms: ['RS256'] }, (err, user) => {\n        if (err) return res.sendStatus(403);\n        req.user = user;\n        next();\n    });\n};\n\nmodule.exports = { authenticateJWT };\n\n// Tokens expire after 15 minutes, and refresh tokens are stored in HttpOnly cookies, expiring after 7 days.\n```"
+        },
+        {
+          "role": "user",
+          "content": "ok cool. what's the db schema for the users? need to make sure email's unique adn validated, and password security's solid."
+        },
+        {
+          "role": "assistant",
+          "content": "Here's a basic user model for PostgreSQL using Sequelize:\n\n```javascript\n// src/models/user.js\nconst { DataTypes } = require('sequelize');\nconst sequelize = require('../config/database');\n\nconst User = sequelize.define('User', {\n    id: {\n        type: DataTypes.UUID,\n        defaultValue: DataTypes.UUIDV4,\n        primaryKey: true,\n    },\n    email: {\n        type: DataTypes.STRING,\n        unique: true,\n        allowNull: false,\n        validate: {\n            isEmail: true,\n            is: /^[\\w-.]+@([\\w-]+\\.)+[\\w-]{2,4}$/,\n        },\n    },\n    password_hash: {\n        type: DataTypes.STRING,\n        allowNull: false,\n    },\n    created_at: {\n        type: DataTypes.DATE,\n        defaultValue: DataTypes.NOW,\n    },\n    updated_at: {\n        type: DataTypes.DATE,\n        defaultValue: DataTypes.NOW,\n    },\n}, {\n    timestamps: false,\n});\n\nmodule.exports = User;\n\n// Passwords should be validated for a minimum of 8 characters, at least one uppercase letter, and one number.\n```"
+        },
+        {
+          "role": "user",
+          "content": "and the routes for signup and login? jwt return handling and setting the refresh cookie needs to be in place."
+        },
+        {
+          "role": "assistant",
+          "content": "Here's how you can handle the auth routes:\n\n```javascript\n// src/routes/auth.js\nconst express = require('express');\nconst bcrypt = require('bcrypt');\nconst jwt = require('jsonwebtoken');\nconst User = require('../models/user');\nconst router = express.Router();\n\nrouter.post('/auth/signup', async (req, res) => {\n    const { email, password } = req.body;\n    const passwordHash = await bcrypt.hash(password, 10);\n    try {\n        const user = await User.create({ email, password_hash: passwordHash });\n        const token = generateToken(user);\n        res.json({ token });\n    } catch (error) {\n        res.status(500).json({ error: 'Error signing up user.' });\n    }\n});\n\nrouter.post('/auth/login', async (req, res) => {\n    const { email, password } = req.body;\n    const user = await User.findOne({ where: { email } });\n    if (user && await bcrypt.compare(password, user.password_hash)) {\n        const token = generateToken(user);\n        const refreshToken = generateRefreshToken(user);\n        res.cookie('refreshToken', refreshToken, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 });\n        res.json({ token });\n    } else {\n        res.status(401).json({ error: 'Invalid credentials.' });\n    }\n});\n\nrouter.post('/auth/refresh', (req, res) => {\n    const refreshToken = req.cookies.refreshToken;\n    if (!refreshToken) return res.sendStatus(403);\n\n    jwt.verify(refreshToken, publicKey, (err, user) => {\n        if (err) return res.sendStatus(403);\n        const token = generateToken(user);\n        res.json({ token });\n    });\n});\n\nrouter.post('/auth/logout', (req, res) => {\n    res.clearCookie('refreshToken');\n    res.sendStatus(200);\n});\n\nfunction generateToken(user) {\n    return jwt.sign({ id: user.id }, privateKey, { algorithm: 'RS256', expiresIn: '15m' });\n}\n\nfunction generateRefreshToken(user) {\n    return jwt.sign({ id: user.id }, privateKey, { algorithm: 'RS256', expiresIn: '7d' });\n}\n\nmodule.exports = router;\n\n// These routes handle user signup, login, refresh, and logout, managing JWT tokens and refresh cookies appropriately.\n```"
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "day": 3,
+      "time": null,
+      "user_request": "Add email verification. Users should verify their email before they can access protected routes.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "need to figure out email verification flow for users. they should verify emails before accessing protected routes. any thoughts on which email service to use? ses is a bit of a hassle rn tbh"
+        },
+        {
+          "role": "assistant",
+          "content": "yeah, SES can be tricky without an existing AWS setup. i'd suggest SendGrid. their free tier gives 100 emails/day, and they have a solid Node SDK. good enough for our needs right now."
+        },
+        {
+          "role": "user",
+          "content": "makes sense. let's go with SendGrid. also, what about the verification tokens? should we use JWTs for those too?"
+        },
+        {
+          "role": "assistant",
+          "content": "using JWTs for verification tokens could work well. we'd reuse the JWT infrastructure, and set them to expire in 24 hours. keeps things simple without adding a separate token table."
+        },
+        {
+          "role": "user",
+          "content": "hmm, but wouldn't that make the verification link vulnerable if intercepted? we need to ensure it's really the user."
+        },
+        {
+          "role": "assistant",
+          "content": "good point, but with HTTPS and a short expiry, the risk is low. plus, it's common for email verifications. here's a quick draft of how we can set this up:\n\n**src/services/email.js**\n```javascript\nconst sgMail = require('@sendgrid/mail');\nsgMail.setApiKey(process.env.SENDGRID_API_KEY);\n\nconst sendVerificationEmail = (email, token) => {\n    const msg = {\n        to: email,\n        from: 'noreply@myapp.com',\n        subject: 'Verify your email',\n        html: `<p>Please verify your email by clicking the button below:</p><p><a href=\"https://myapp.com/auth/verify/${token}\"><button>Verify Email</button></a></p><p><img src=\"https://myapp.com/logo.png\" alt=\"App Logo\"/></p>`\n    };\n    return sgMail.send(msg);\n};\n\nmodule.exports = { sendVerificationEmail };\n```\n\n**src/routes/verify.js**\n```javascript\nconst express = require('express');\nconst router = express.Router();\n\nrouter.get('/auth/verify/:token', (req, res) => {\n    // verify token logic here\n    // if valid, set user.verified = true\n});\n\nrouter.post('/auth/resend-verification', (req, res) => {\n    // rate limit logic to 3 requests/hour\n    // resend verification email\n});\n\nmodule.exports = router;\n```\n\n**User Model Updates**\n```javascript\n// Assume Sequelize ORM\nmodule.exports = (sequelize, DataTypes) => {\n    const User = sequelize.define('User', {\n        // existing fields\n        verified: {\n            type: DataTypes.BOOLEAN,\n            defaultValue: false\n        },\n        verification_sent_at: {\n            type: DataTypes.DATE\n        }\n    });\n    return User;\n};\n```\n"
+        },
+        {
+          "role": "user",
+          "content": "looks good. let's integrate this and test. will set up the sendgrid key and give it a try."
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "day": 5,
+      "time": null,
+      "user_request": "Login is really slow — takes about 3 seconds. Can you figure out why?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "login is really slow — about 3 seconds. any idea what's causing this?"
+        },
+        {
+          "role": "assistant",
+          "content": "Let's profile the login endpoint. Might be an N+1 issue or indexing problem. I'll check the database queries first."
+        },
+        {
+          "role": "user",
+          "content": "yeah, remember when we set up the JWTs and bcrypt last week? shouldn't be those. maybe something in the db, like missing indexes."
+        },
+        {
+          "role": "assistant",
+          "content": "Exactly. I found an N+1 query issue. The login handler calls `findUserByEmail()`, triggering three queries: one for the user, another for roles, and one more for permissions. Plus, there's no index on the email column, causing slow sequential scans across 50K records."
+        },
+        {
+          "role": "user",
+          "content": "wait, why not just combine those queries into a single one? seems like separate queries are overkill here."
+        },
+        {
+          "role": "assistant",
+          "content": "Good point. I optimized it by using a single query with a LEFT JOIN on roles and permissions. Also added a B-tree index on `users.email`. Here's the updated code:\n\n```javascript\nconst getUserWithRoles = async (email) => {\n  return db('users')\n    .select('users.*', 'roles.name as role_name', 'permissions.name as permission_name')\n    .leftJoin('roles', 'users.role_id', 'roles.id')\n    .leftJoin('permissions', 'roles.permission_id', 'permissions.id')\n    .where('users.email', email);\n};\n```\n\nLogin time dropped from 2.8s to 120ms (P99)."
+        },
+        {
+          "role": "user",
+          "content": "nice! can you show performance results before and after? curious about the impact on load."
+        },
+        {
+          "role": "assistant",
+          "content": "Sure, here's the performance data:\n\n**Before fix:**\n- P50 = 1.2s\n- P99 = 2.8s\n- Database CPU usage at 85% during load with 100 concurrent users\n\n**After fix:**\n- P50 = 45ms\n- P99 = 120ms\n- Database CPU usage dropped to 12%\n\nThis should significantly improve user experience under load."
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "day": 8,
+      "time": null,
+      "user_request": "Add password reset functionality",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so we need to add password reset to the auth system. thinking about how the flow should go. jwt doesn't seem right for this since they can't be revoked easily. thoughts?"
+        },
+        {
+          "role": "assistant",
+          "content": "You're right, JWTs aren't ideal for reset tokens since we need them to be single-use and revocable. We should use a separate table for reset tokens. Here's what I'm thinking: a reset_tokens table with columns like token_hash, user_id, expires_at, used_at. Tokens are hashed with SHA-256 before storage."
+        },
+        {
+          "role": "user",
+          "content": "hmm, that makes sense. but do we really need a separate table? can't we just add a column to the users table or something?"
+        },
+        {
+          "role": "assistant",
+          "content": "We could, but using a separate table gives us more flexibility. For example, if a user requests multiple resets, we can track them individually. It also simplifies handling expired and used tokens. Plus, it keeps the users table cleaner. Here's how the migration would look:\n\n```sql\nCREATE TABLE reset_tokens (\n    id SERIAL PRIMARY KEY,\n    token_hash VARCHAR(64) NOT NULL,\n    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n    expires_at TIMESTAMP NOT NULL,\n    used_at TIMESTAMP,\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n);\n```\n"
+        },
+        {
+          "role": "user",
+          "content": "got it. let's implement the routes then. we should limit reset requests to avoid spam."
+        },
+        {
+          "role": "assistant",
+          "content": "Definitely. We can rate limit to 5 reset requests per email per day. Here's a basic outline of the routes:\n\n```javascript\n// POST /auth/forgot-password\napp.post('/auth/forgot-password', (req, res) => {\n    // Logic to generate and send reset email with 1-hour token\n});\n\n// POST /auth/reset-password\napp.post('/auth/reset-password', (req, res) => {\n    // Logic to validate token, update password, mark token as used\n});\n```\n\nWe'll use SendGrid to send the reset email with a 1-hour expiry token. The reset-password route will verify the token, update the user's password, and mark the token as used."
+        },
+        {
+          "role": "user",
+          "content": "sounds good. and remember, tokens need to be hashed with sha-256 before storage, similar to how we're using bcrypt for passwords."
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "day": 12,
+      "time": null,
+      "user_request": "Write API documentation for all the auth endpoints",
+      "messages": [
+        {
+          "role": "user",
+          "content": "need to get the API docs done for all our auth endpoints. thinking we should stick to markdown for now. remember when we decided on JWT with RS256? we prob need to explain that flow too. any suggestions on tooling for this?"
+        },
+        {
+          "role": "assistant",
+          "content": "Markdown works well. We can use something like 'docsify' to generate a static site from the markdown files if you want something more interactive. For the API documentation, I'll start with a file `docs/auth-api.md` that covers all 8 endpoints: signup, login, refresh, logout, verify, resend-verification, forgot-password, and reset-password. Each will have method, path, request/response schemas, error codes, and rate limits. Plus, a section on the JWT flow with RS256. I'll include curl examples for each. Sound good?"
+        },
+        {
+          "role": "user",
+          "content": "docsify sounds like overkill tbh. let's just do plain markdown for now. can you get started on the docs and share the draft? i'll check the jwt section once you're done."
+        },
+        {
+          "role": "assistant",
+          "content": "Alright, plain markdown it is. Here's a draft for the API documentation:\n\n```\n# Authentication API Documentation\n\n## Overview\nThis document describes the authentication endpoints for our application. It includes details on request/response formats, error codes, and rate limits.\n\n## Endpoints\n\n### 1. Signup\n- **Method**: POST\n- **Path**: `/api/auth/signup`\n- **Request Body**: `{ \"email\": \"user@example.com\", \"password\": \"password123\" }`\n- **Response**: `{ \"userId\": \"12345\", \"email\": \"user@example.com\" }`\n- **Errors**: `400 Bad Request`, `409 Conflict`\n- **Rate Limit**: 5 requests/minute\n\n### 2. Login\n- **Method**: POST\n- **Path**: `/api/auth/login`\n- **Request Body**: `{ \"email\": \"user@example.com\", \"password\": \"password123\" }`\n- **Response**: `{ \"accessToken\": \"xxxx\", \"refreshToken\": \"yyyy\" }`\n- **Errors**: `401 Unauthorized`\n- **Rate Limit**: 10 requests/minute\n\n### 3. Refresh Token\n- **Method**: POST\n- **Path**: `/api/auth/refresh`\n- **Request Body**: `{ \"refreshToken\": \"yyyy\" }`\n- **Response**: `{ \"accessToken\": \"newAccessToken\" }`\n- **Errors**: `401 Unauthorized`\n- **Rate Limit**: 10 requests/minute\n\n### 4. Logout\n- **Method**: POST\n- **Path**: `/api/auth/logout`\n- **Request Body**: `{ \"refreshToken\": \"yyyy\" }`\n- **Response**: `204 No Content`\n- **Errors**: `401 Unauthorized`\n- **Rate Limit**: 10 requests/minute\n\n### 5. Verify Email\n- **Method**: GET\n- **Path**: `/api/auth/verify?token=xxxx`\n- **Response**: `200 OK`\n- **Errors**: `400 Bad Request`, `404 Not Found`\n- **Rate Limit**: 5 requests/minute\n\n### 6. Resend Verification\n- **Method**: POST\n- **Path**: `/api/auth/resend-verification`\n- **Request Body**: `{ \"email\": \"user@example.com\" }`\n- **Response**: `204 No Content`\n- **Errors**: `400 Bad Request`, `404 Not Found`\n- **Rate Limit**: 5 requests/minute\n\n### 7. Forgot Password\n- **Method**: POST\n- **Path**: `/api/auth/forgot-password`\n- **Request Body**: `{ \"email\": \"user@example.com\" }`\n- **Response**: `204 No Content`\n- **Errors**: `400 Bad Request`, `404 Not Found`\n- **Rate Limit**: 5 requests/minute\n\n### 8. Reset Password\n- **Method**: POST\n- **Path**: `/api/auth/reset-password`\n- **Request Body**: `{ \"token\": \"xxxx\", \"newPassword\": \"newpassword123\" }`\n- **Response**: `204 No Content`\n- **Errors**: `400 Bad Request`, `401 Unauthorized`\n- **Rate Limit**: 5 requests/minute\n\n## Authentication\n- **JWT Flow**: We use JWTs signed with RS256 for authentication. Access tokens have a 15-minute expiry, and refresh tokens last for 7 days. Ensure your client securely stores tokens and sends them in the Authorization header as `Bearer <token>`.\n\n## Examples\n```bash\n# Signup\ncurl -X POST https://yourapi.com/api/auth/signup -d '{ \"email\": \"user@example.com\", \"password\": \"password123\" }'\n\n# Login\ncurl -X POST https://yourapi.com/api/auth/login -d '{ \"email\": \"user@example.com\", \"password\": \"password123\" }'\n\n# Refresh Token\ncurl -X POST https://yourapi.com/api/auth/refresh -d '{ \"refreshToken\": \"yyyy\" }'\n```\n```\nLet me know if you need changes or additions."
+        },
+        {
+          "role": "user",
+          "content": "looks good. i'll review the jwt section and get back if any tweaks needed. thanks for the quick turnaround!"
+        }
+      ]
+    },
+    {
+      "id": "s6",
+      "day": 14,
+      "time": null,
+      "user_request": "Send a progress update to the client about the auth system",
+      "messages": [
+        {
+          "role": "user",
+          "content": "need to send a progress update to the client about the auth system. can you help draft that? it should cover all we've done over the last two weeks."
+        },
+        {
+          "role": "assistant",
+          "content": "Sure, here's a draft for the client update:\n\n---\n\nSubject: Auth System Complete — Progress Update\n\nHi [Client's Name],\n\nI'm pleased to inform you that we've completed the key components of the authentication system for your platform. Here's a summary of what we've accomplished over the past two weeks:\n\n1. **Signup/Login**: Implemented using JWT with RS256 signatures, and bcrypt v5.1.0 for secure password hashing.\n\n2. **Email Verification**: Leveraged SendGrid for sending verification emails. We're currently on the 100/day free tier, which should be sufficient for the beta phase. Verification tokens are signed JWTs with a 24-hour expiry.\n\n3. **Password Reset**: Introduced a separate reset tokens table, ensuring robust security.\n\n4. **API Documentation**: Comprehensive API docs written for all authentication endpoints to facilitate seamless integration.\n\nAdditionally, we've drastically improved login performance by addressing an N+1 query issue and adding a missing index on the email column. Login P99 times have been reduced from 2.8s to 120ms.\n\n**Next Steps**: We recommend reviewing rate limiting strategies and considering OAuth for social logins to enhance user experience.\n\nPlease let us know if you have any questions or need further details.\n\nBest regards,\n\n[Your Name]\n\n---\n\nLet me know if there's anything you'd like to adjust!"
+        },
+        {
+          "role": "user",
+          "content": "wait, why mention rate limiting now? didn't we decide to focus on social login first?"
+        },
+        {
+          "role": "assistant",
+          "content": "Good point. We did prioritize social login initially. I included rate limiting as a suggestion since it's a common follow-up when ramping up user traffic, but you're right, we should stick to our priorities. Do you want me to revise the email to focus on social login only?"
+        },
+        {
+          "role": "user",
+          "content": "yeah, let's keep it focused on social login for now. thanks. also, could you double-check if the email column index is in teh production db? last time I checked, it was in staging only."
+        },
+        {
+          "role": "assistant",
+          "content": "I'll check on that and ensure it's in production. Here's the updated email draft with the focus on social login:\n\n---\n\nSubject: Auth System Complete — Progress Update\n\nHi [Client's Name],\n\nI'm pleased to inform you that we've completed the key components of the authentication system for your platform. Here's a summary of what we've accomplished over the past two weeks:\n\n1. **Signup/Login**: Implemented using JWT with RS256 signatures, and bcrypt v5.1.0 for secure password hashing.\n\n2. **Email Verification**: Leveraged SendGrid for sending verification emails. We're currently on the 100/day free tier, which should be sufficient for the beta phase. Verification tokens are signed JWTs with a 24-hour expiry.\n\n3. **Password Reset**: Introduced a separate reset tokens table, ensuring robust security.\n\n4. **API Documentation**: Comprehensive API docs written for all authentication endpoints to facilitate seamless integration.\n\nAdditionally, we've drastically improved login performance by addressing an N+1 query issue and adding a missing index on the email column in staging. We're confirming it's applied in production as well. Login P99 times have been reduced from 2.8s to 120ms.\n\n**Next Steps**: We're planning to implement OAuth for social logins, enhancing user experience and accessibility.\n\nPlease let us know if you have any questions or need further details.\n\nBest regards,\n\n[Your Name]\n\n---\n\nI'll follow up shortly with the status of the index in production."
+        }
+      ]
+    }
+  ],
+  "qa_pairs": [
+    {
+      "question": "What password hashing library does the auth system use?",
+      "answer": "bcrypt v5.1.0",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How long do JWT access tokens last before expiring?",
+      "answer": "15 minutes",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What email service is used for sending verification emails?",
+      "answer": "SendGrid",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What is the rate limit for resending verification emails?",
+      "answer": "3 per hour",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "fact_recall",
+      "difficulty": "detail"
+    },
+    {
+      "question": "Why was JWT chosen over session-based authentication?",
+      "answer": "The frontend is a React SPA deployed on CDN, which needs stateless auth. Sessions would require sticky sessions or a shared session store.",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "Why does password reset use a database table instead of JWTs?",
+      "answer": "Reset tokens must be single-use and revocable. JWTs can't be revoked without a blocklist.",
+      "evidence_sessions": [
+        "s4"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "Why was SendGrid chosen over AWS SES?",
+      "answer": "SendGrid has a free tier with 100 emails/day and a good Node SDK. SES requires AWS account setup that wasn't available yet.",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What caused the slow login performance?",
+      "answer": "N+1 query in user lookup — the login handler ran 3 separate queries (user, roles, permissions) and there was no index on the email column.",
+      "evidence_sessions": [
+        "s3"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What was the login latency before and after the performance fix?",
+      "answer": "Before: P99 was 2.8s. After: P99 was 120ms.",
+      "evidence_sessions": [
+        "s3"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "detail"
+    },
+    {
+      "question": "How many auth API endpoints are documented?",
+      "answer": "8 endpoints: signup, login, refresh, logout, verify, resend-verification, forgot-password, reset-password",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "artifact_content",
+      "difficulty": "detail"
+    },
+    {
+      "question": "What columns does the users table have?",
+      "answer": "id (UUID), email (unique), password_hash, created_at, updated_at, verified (boolean), verification_sent_at (timestamp)",
+      "evidence_sessions": [
+        "s1",
+        "s2"
+      ],
+      "type": "artifact_content",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "How does the password reset feature send emails?",
+      "answer": "It uses SendGrid, the same email service set up for email verification in session 2.",
+      "evidence_sessions": [
+        "s2",
+        "s4"
+      ],
+      "type": "cross_session",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "What performance improvement was mentioned in the client email?",
+      "answer": "Login P99 reduced from 2.8s to 120ms",
+      "evidence_sessions": [
+        "s3",
+        "s6"
+      ],
+      "type": "cross_session",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "What was worked on during the second week?",
+      "answer": "Password reset functionality (day 8), API documentation (day 12), and client progress update email (day 14)",
+      "evidence_sessions": [
+        "s4",
+        "s5",
+        "s6"
+      ],
+      "type": "temporal",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "What was the first feature implemented after the initial auth setup?",
+      "answer": "Email verification, added on day 3",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "temporal",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What next steps were recommended to the client?",
+      "answer": "Rate limiting review and OAuth social login",
+      "evidence_sessions": [
+        "s6"
+      ],
+      "type": "communication",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "Write a security review checklist for the auth system before production launch",
+      "answer": "Context should include all required evidence items",
+      "type": "task",
+      "difficulty": "multi-hop",
+      "evidence_sessions": [
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s5"
+      ],
+      "required_evidence": [
+        "JWT tokens expire after 15 minutes",
+        "refresh tokens in HttpOnly cookies, 7-day expiry",
+        "RS256 with 2048-bit keys",
+        "bcrypt v5.1.0 for password hashing",
+        "rate limiting: 5 failed attempts triggers 15-min lockout",
+        "N+1 query bug was fixed (session 3 finding)",
+        "CORS configured for specific origins only",
+        "8 API endpoints documented"
+      ]
+    },
+    {
+      "question": "Draft a technical onboarding doc for a new backend engineer joining the team, covering the auth system architecture",
+      "answer": "Context should include all required evidence items",
+      "type": "task",
+      "difficulty": "multi-hop",
+      "evidence_sessions": [
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s5"
+      ],
+      "required_evidence": [
+        "JWT with RS256 signatures for stateless auth",
+        "bcrypt for password hashing",
+        "SendGrid for transactional email",
+        "email verification with 24-hour token expiry",
+        "password reset uses separate tokens table (not JWT)",
+        "login optimized from 2.8s to 120ms P99",
+        "PostgreSQL with users table schema"
+      ]
+    }
+  ],
+  "persona": {
+    "role": "Senior backend engineer, 5 years experience",
+    "communication_style": "concise and direct, skips pleasantries, uses lowercase for casual messages, writes longer messages when explaining technical context",
+    "quirks": [
+      "types fast with occasional typos (teh, adn)",
+      "uses abbreviations like 'prob', 'tbh', 'imo'",
+      "sometimes pastes error output mid-sentence without warning"
+    ],
+    "context": "Series B fintech startup in London, 25-person eng team, building a payment processing platform"
+  }
+}

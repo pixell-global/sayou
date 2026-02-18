@@ -1,0 +1,399 @@
+{
+  "scenario_id": "scenario-09",
+  "title": "Plan a Monolith-to-Microservices Migration",
+  "domain": "architecture",
+  "category": "plan",
+  "description": "A tech lead plans the decomposition of a Django monolith into microservices. Over 7 sessions across 3 weeks, the agent analyzes domain boundaries, designs service interfaces, creates a migration roadmap, handles pushback from senior engineers, and drafts an RFC for team review.\n",
+  "sessions": [
+    {
+      "id": "s1",
+      "day": 1,
+      "time": null,
+      "user_request": "Our Django monolith has grown to 180K lines of code, 47 Django apps, and deploys take 25 minutes. The team (12 engineers) is stepping on each other. Help me plan a microservices migration.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so we've got this giant Django monolith, 180K lines, 47 apps. Deploys are slow, takes 25 mins, and our team of 12 is stepping on each other's toes. We need to plan a move to microservices. Tbh, I'm worried about the complexity. How do we even start?"
+        },
+        {
+          "role": "assistant",
+          "content": "We can consider the strangler fig pattern for this migration. This approach allows us to extract services one at a time while keeping the monolith operational. It's less risky compared to a big-bang rewrite, especially with a smaller team. We identify boundaries and gradually replace parts of the monolith with microservices."
+        },
+        {
+          "role": "user",
+          "content": "wait, why not just modularize the monolith? It feels like a middle ground."
+        },
+        {
+          "role": "assistant",
+          "content": "Modularizing could help with code organization but won't solve deployment and team coordination issues. Extracting into microservices allows each domain to evolve independently and reduces deployment time because services can be deployed individually. Plus, if each service handles its own test suite, it cuts down the test execution time significantly."
+        },
+        {
+          "role": "user",
+          "content": "ah, makes sense. Oh also, have we figured out the domain boundaries?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yes, we've identified 6 primary domains: auth/users, orders/payments, inventory, notifications, analytics, and content/CMS. The other 41 apps are mainly shared utilities. Here's a document outlining our domain boundary analysis:\n\n---\n## Domain Boundary Analysis\n\n### Domains Identified\n- **Auth/Users**: 14 apps → 1 service\n- **Orders/Payments**: 8 apps → 1 service\n- **Inventory**: 5 apps → 1 service\n- **Notifications**: 4 apps → 1 service\n- **Analytics**: 3 apps → 1 service\n- **Content/CMS**: 4 apps → 1 service\n\n### Shared Utilities\n- 41 apps → 1 shared library package\n\n### Coupling Analysis\n- **Biggest Couplings**: Orders ↔ Inventory (38 direct imports), Orders ↔ Auth (22 direct imports)\n- **Least Coupled**: Notifications (only consumes events), Analytics (read-only from all domains)\n\n### Recommended Extraction Order\n1. Notifications\n2. Analytics\n3. Content/CMS\n4. Inventory\n5. Orders/Payments\n6. Auth/Users\n\nThis order tackles the least coupled domains first, reducing risk with each step."
+        },
+        {
+          "role": "user",
+          "content": "that's helpful. And the deploy bottleneck is mainly the test suite, right?"
+        },
+        {
+          "role": "assistant",
+          "content": "Exactly. The build itself takes about 3 minutes, but running the full test suite takes 22 minutes due to heavy database fixture setup with 4,800 tests. If we split services, each would have a smaller, focused test suite. On average, each domain would have around 800 tests, reducing execution to about 4 minutes per service."
+        },
+        {
+          "role": "user",
+          "content": "Alright, let's move forward with the strangler fig pattern and start planning the first extraction. We'll start with notifications as you've suggested."
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "day": 4,
+      "time": null,
+      "user_request": "Let's design the service communication. We currently have direct function calls between Django apps. How do services talk to each other?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so we need to design the service communication. we've got those direct function calls between Django apps right now. how do we make them talk to each other in our new setup?"
+        },
+        {
+          "role": "assistant",
+          "content": "Let's break it down into asynchronous and synchronous communication, as well as how we'll handle external traffic. For async, we're going with an event-driven architecture using RabbitMQ. We'll use topic exchanges to manage events like order.placed, order.shipped, user.registered, inventory.low_stock, payment.completed, and payment.failed. For synchronous queries, gRPC with Protocol Buffers will be our choice. This will cover calls like InventoryService.CheckStock, AuthService.ValidateToken, and OrderService.GetOrderStatus."
+        },
+        {
+          "role": "user",
+          "content": "wait, why RabbitMQ and not Kafka? Kafka is kinda popular for events."
+        },
+        {
+          "role": "assistant",
+          "content": "Good question. While Kafka is great for high-throughput messaging, it's a bit overkill for our scale and needs. RabbitMQ fits better for the kind of event-driven communication we need, especially with something like 6 services. Plus, it integrates smoothly with our setup without the infra complexity Kafka would bring. Also, we'll use a REST API gateway with Kong to handle external traffic. Routes like /api/v1/orders will direct to the order service, /api/v1/users to the auth service, and so on."
+        },
+        {
+          "role": "user",
+          "content": "makes sense, tbh I was concerned about the infra complexity with Kafka. oh also, what about the database? are we splitting them from the start?"
+        },
+        {
+          "role": "assistant",
+          "content": "Initially, we'll keep a shared PostgreSQL database but with schema-level isolation. Each service will own tables prefixed with its domain, like orders_, inventory_, auth_, and there won't be any cross-domain direct table access. This way, we reduce risk by not extracting the code and database at the same time. Once the service boundaries are working well, we'll migrate each service to its own database."
+        },
+        {
+          "role": "user",
+          "content": "right, like we discussed last time, extracting code and db together could double the risk. okay, sounds viable. let's move forward with this."
+        },
+        {
+          "role": "assistant",
+          "content": "I'll document the service communication architecture for you:\n\n* **Events (async):** RabbitMQ with topic exchanges. Events: order.placed, order.shipped, user.registered, inventory.low_stock, payment.completed, payment.failed.\n* **Queries (sync):** gRPC with Protocol Buffers. Services: InventoryService.CheckStock, AuthService.ValidateToken, OrderService.GetOrderStatus.\n* **External API:** REST via Kong API Gateway. Routes: /api/v1/orders → order-service, /api/v1/users → auth-service, etc.\n* **Schema isolation:** Each service owns tables prefixed with its domain (orders_, inventory_, auth_) — no cross-domain direct table access.\n* **Event schema registry:** All events defined in a shared protobuf package, versioned with backward compatibility rules.\n\nDoes this align with what you're thinking?"
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "day": 7,
+      "time": null,
+      "user_request": "Sarah (senior engineer, 5 years on the codebase) pushes back. She says microservices will make debugging harder, add network latency, and we don't have the DevOps maturity. How do we address her concerns?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so Sarah's worried about microservices making debugging hard, adding latency, and our DevOps isn't mature enough. We've talked about the strangler fig pattern before, but how do we address her concerns specifically?"
+        },
+        {
+          "role": "assistant",
+          "content": "Sarah's concerns make sense, and it's good we're considering them before diving in. Let's break down each issue:\n\n1. **Debugging**: To tackle this, we can implement distributed tracing with Jaeger. It allows us to trace requests across services using correlation IDs. We'll also use the ELK stack for centralized logging, which should help us maintain a clear view of what's happening across services.\n\n2. **Latency**: gRPC introduces about 2ms per hop compared to 0ms for direct function calls. For processes with three hops, that's around 6ms added latency. Given our P95 latency target is below 500ms, this is within acceptable limits.\n\n3. **DevOps Maturity**: We can start small by extracting just two services—notifications and analytics. These are less coupled, and ECS Fargate will simplify deployment without needing Kubernetes. We can leverage the current CI/CD pipeline with GitHub Actions, so we're not reinventing the wheel.\n\n4. **Job Security** (not explicitly mentioned): The transition will take 2+ years, and Sarah's deep knowledge of the monolith makes her well-positioned to lead the extraction efforts.\n\nFinally, an agreement to extract notifications and analytics first, evaluate after two months, and see if the operational overhead is manageable. If not, we'll stop and reassess. Success will look like deploy times under 5 minutes per service, no rise in production incidents, and maintaining team velocity."
+        },
+        {
+          "role": "user",
+          "content": "hmm, starting with those services makes sense. But what if the added latency impacts user experience more than expected? especially during peak times?"
+        },
+        {
+          "role": "assistant",
+          "content": "That's a valid concern. We can mitigate this by closely monitoring latency metrics, particularly during peak times. If we see latency becoming an issue, we can optimize the most critical paths or consider caching strategies. Additionally, since we'll start with analytics and notifications—non-critical to immediate user interaction—the risk is lower. We can adjust based on what we learn from these initial changes."
+        },
+        {
+          "role": "user",
+          "content": "makes sense, and what about the team readiness? tbh, I'm not sure everyone is on board with these changes yet."
+        },
+        {
+          "role": "assistant",
+          "content": "Team readiness is crucial. We should do a capability assessment to understand where everyone stands. From there, we can provide targeted training sessions on distributed systems and the tools we'll be using, like Jaeger and ECS Fargate. It might also help to have Sarah and other experienced team members lead knowledge-sharing sessions about their domains. We can plan these around the initial migration to ensure everyone is aligned and confident moving forward."
+        },
+        {
+          "role": "user",
+          "content": "oh also, we should document these plans for Sarah. Let’s make sure she sees we’re considering her feedback seriously."
+        },
+        {
+          "role": "assistant",
+          "content": "Absolutely. Here's a draft of the Concerns and Mitigations document we can share with her:\n\n---\n**Concerns and Mitigations Document**\n\n- **Concern 1 — Debugging**: Implement distributed tracing with Jaeger, use correlation IDs in all requests/events, and maintain centralized logging with the ELK stack.\n\n- **Concern 2 — Latency**: gRPC adds about 2ms per hop. For an order flow with 3 hops, the total added latency is approximately 6ms, which remains under our P95 target of <500ms.\n\n- **Concern 3 — DevOps Maturity**: Start with two simple services: notifications and analytics. Use the existing CI/CD pipeline (GitHub Actions). Deploy with ECS Fargate for simplicity.\n\n- **Concern 4 (Unstated) — Job Security**: Monolith knowledge remains crucial for the next 2+ years, with Sarah's expertise being key for leading the extraction.\n\n- **Agreement**: Extract notifications and analytics first. Evaluate after two months. If operational overhead is too high, stop and reassess.\n\n- **Success Criteria**: Deployment time under 5 minutes per service, no increase in production incidents, and team velocity is not decreased.\n\n---\n\nWe can review this together and get her feedback before proceeding."
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "day": 10,
+      "time": null,
+      "user_request": "Let's design the first extraction — notification service. It currently handles email, SMS, push notifications, and in-app notifications.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so let's focus on extracting the notification service first. We're looking at a lot of moving parts here—email, SMS, push, and in-app. We need to define clear boundaries for this service. Given our past discussions, should we leverage FastAPI instead of Django for handling events?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yeah, FastAPI is a good fit. It's lightweight and can handle event-driven workloads effectively. Here's a basic design for the notification service:\n\n```python\n# FastAPI service setup with Python 3.12\nfrom fastapi import FastAPI\nfrom pydantic import BaseModel\n\napp = FastAPI()\n\n# Channels and services\nclass NotificationEvent(BaseModel):\n    event_id: str\n    user_id: str\n    channel: str\n    message: str\n\n# Events to consume\nEVENTS = [\"order.placed\", \"order.shipped\", \"payment.failed\", \"user.registered\", \"inventory.low_stock\"]\n\n# External services\nemail_service = \"SendGrid\"\nsms_service = \"Twilio\"\npush_service = \"Firebase FCM\"\nin_app_service = \"WebSocket\"\n\n# Template management\nTEMPLATE_PATH = \"./templates\"\n\n# User preferences caching\nUSER_PREF_CACHE_DURATION = 300  # 5 minutes\n\n# Delivery guarantees\nDELIVERY_GUARANTEE = \"at-least-once\"\n\n# Dead letter queue setup\nDEAD_LETTER_QUEUE = \"retry\"\n\n# Database schema\nDATABASE_SCHEMA = {\n    \"tables\": [\"notification_log\", \"delivery_attempts\", \"user_preferences_cache\"]\n}\n```\n\nThis setup uses RabbitMQ for at-least-once delivery, with a deduplication strategy based on event_id and channel. We'll cache user preferences from the auth-service via gRPC."
+        },
+        {
+          "role": "user",
+          "content": "tbh, I'm worried about the delivery guarantees. At-least-once sounds fine, but what about the retries and failed deliveries? We've seen retries causing issues before."
+        },
+        {
+          "role": "assistant",
+          "content": "That's a valid concern. We'll implement a dead letter queue for failed deliveries, with a retry mechanism that attempts delivery up to three times using exponential backoff. This should mitigate overloading the system due to retries. If a message still fails after retries, it'll end up in the dead letter queue for further analysis."
+        },
+        {
+          "role": "user",
+          "content": "Alright, makes sense. oh also, about the data migration, how do we handle the notification template data and logs? We can't have downtime during this switchover."
+        },
+        {
+          "role": "assistant",
+          "content": "For the migration script, we'll copy existing notification templates and logs from the monolith to the new service database. Here's a rough outline:\n\n```python\n# Migration script\nimport psycopg2\n\n# Connect to monolith and new service DB\nmonolith_conn = psycopg2.connect(\"monolith_db_connection_string\")\nnew_service_conn = psycopg2.connect(\"new_service_db_connection_string\")\n\n# Copy data\ndef copy_data():\n    with monolith_conn.cursor() as monolith_cursor, new_service_conn.cursor() as new_service_cursor:\n        # Copy templates\n        monolith_cursor.execute(\"SELECT * FROM notification_templates\")\n        templates = monolith_cursor.fetchall()\n        new_service_cursor.executemany(\n            \"INSERT INTO notification_log (template_id, content) VALUES (%s, %s)\",\n            templates\n        )\n\n        # Copy logs\n        monolith_cursor.execute(\"SELECT * FROM notification_logs\")\n        logs = monolith_cursor.fetchall()\n        new_service_cursor.executemany(\n            \"INSERT INTO delivery_attempts (log_id, status) VALUES (%s, %s)\",\n            logs\n        )\n\n# Dual-write period\n# During this period, both the monolith and new service will process notifications\n\n# Switchover strategy\n# Once the new service shows 100% parity with the monolith for a week,\n# we'll disable the monolith's notification handling.\n```\n\nWe'll have a dual-write period where both systems process notifications simultaneously, and the new service logs what it would send. Once we achieve 100% parity for a week, we'll switch over completely."
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "day": 14,
+      "time": null,
+      "user_request": "Notification service is live and working! Now plan the analytics extraction. This one's trickier — analytics reads from almost every table.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Notification service is live and working! Now we need to plan the analytics extraction. It's more involved since analytics reads from almost every table. Given our past decisions, I'm thinking we need a robust strategy for this. Thoughts on read replica patterns and event sourcing?"
+        },
+        {
+          "role": "assistant",
+          "content": "For analytics, directly querying production tables is risky — it can cause lock contention. Instead, I suggest we have the analytics service consume domain events from RabbitMQ and a CDC (Change Data Capture) stream using Debezium. This approach allows the service to build its own denormalized tables, optimized for analytical queries."
+        },
+        {
+          "role": "user",
+          "content": "Hmm, I see the point about lock contention. But tbh, I'm worried about the complexity of event sourcing and CDC together. Could we just use a read replica instead to simplify things?"
+        },
+        {
+          "role": "assistant",
+          "content": "A read replica might simplify the setup but won't handle denormalized, pre-aggregated queries as efficiently. With analytics workloads, especially aggregations, we'd hit performance issues. ClickHouse could be a good fit for this — it's designed for fast analytical queries and handles time-series data very efficiently."
+        },
+        {
+          "role": "user",
+          "content": "Alright, that makes sense. ClickHouse for analytics storage then. So, we set up RabbitMQ for events and Debezium for CDC. We probably need a detailed architecture doc for this, right?"
+        },
+        {
+          "role": "assistant",
+          "content": "Here's an outline for the analytics service architecture document:\n\n**Data Sources**:\n- Domain events from RabbitMQ\n- CDC stream from PostgreSQL using Debezium\n\n**Storage**:\n- ClickHouse for analytical queries\n- PostgreSQL for service metadata\n\n**Key Tables**:\n- `events_raw`: Append-only, all domain events\n- `daily_metrics`: Pre-aggregated DAU, orders, revenue\n- `cohort_retention`\n- `funnel_stages`\n\n**Query Layer**:\n- FastAPI with pre-defined report endpoints\n- No ad-hoc SQL from clients\n\n**Caching**:\n- Redis for frequently accessed dashboards (TTL 5 minutes)\n\n**Backfill**:\n- One-time historical data load from monolith via pg_dump → transform → ClickHouse bulk insert\n\n**Estimated Storage**:\n- 50GB/year in ClickHouse (vs 200GB in PostgreSQL for the same data, due to columnar compression)"
+        },
+        {
+          "role": "user",
+          "content": "oh also, we need to ensure that the FastAPI endpoints align with our reporting requirements. The pre-defined reports should cover all major use cases we identified, otherwise it'll be a hassle to adjust later."
+        }
+      ]
+    },
+    {
+      "id": "s6",
+      "day": 18,
+      "time": null,
+      "user_request": "Create a full migration roadmap I can present to the VP of Engineering. Include timeline, staffing, and risks.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "So, we need a comprehensive migration roadmap for the VP. We’ve covered a lot over the past sessions, like the notification service which is live now. Next, we have to plan out the analytics service. Considering Sarah's concerns and our previous decisions, can you help outline a presentation-ready roadmap?"
+        },
+        {
+          "role": "assistant",
+          "content": "Sure thing. Here's a draft of the migration roadmap:\n\n---\n**Monolith-to-Microservices Migration Roadmap**\n\n**Total Timeline:** 18 months for full decomposition\n\n**Phase 1 (Months 1-3):** Notifications service extraction\n- **Staffing:** 2 engineers\n- **Risk:** Low\n- **Status:** Completed\n\n**Phase 2 (Months 3-5):** Analytics service extraction\n- **Staffing:** 2 engineers\n- **Risk:** Medium (data migration)\n\n**Phase 3 (Months 5-8):** Content/CMS extraction\n- **Staffing:** 3 engineers\n- **Risk:** Medium (user-facing)\n\n**Phase 4 (Months 8-11):** Inventory service extraction\n- **Staffing:** 3 engineers\n- **Risk:** High (orders coupling)\n\n**Phase 5 (Months 11-15):** Orders/payments extraction\n- **Staffing:** 4 engineers\n- **Risk:** Highest (payment processing, regulatory)\n\n**Phase 6 (Months 15-18):** Auth service extraction\n- **Staffing:** 3 engineers\n- **Risk:** High (everything depends on auth)\n\n**Total Staffing:** 4 engineers dedicated (rotating), 2 shared infrastructure engineers\n\n**Risk Considerations:**\n- Timeline assumes no major feature development freezes.\n- Realistically, expect 20-30% schedule slip.\n\n**Key Milestones:**\n- Month 3 go/no-go decision\n- Month 8 mid-point review\n- Month 15 final extraction approval\n---"
+        },
+        {
+          "role": "user",
+          "content": "Wait, why do we need 3 engineers for the content extraction? Tbh, I thought we'd need fewer since it’s more straightforward than inventory."
+        },
+        {
+          "role": "assistant",
+          "content": "Good point. The content extraction involves user-facing components, which require rigorous testing and potential redesigns for UX consistency. The additional engineer helps manage those aspects efficiently, reducing risk of user experience disruptions."
+        },
+        {
+          "role": "user",
+          "content": "I see, makes sense. Oh also, we should factor in any potential regulatory changes, especially for orders and payments. Last time we mentioned Japan's data protection laws, remember?"
+        },
+        {
+          "role": "assistant",
+          "content": "Definitely. We should keep an eye on regulatory updates. For orders and payments, we'll need to closely collaborate with the legal team to ensure compliance, particularly with Japan's data protection laws. This might slightly affect our timelines, but the collaboration should mitigate larger risks."
+        }
+      ]
+    },
+    {
+      "id": "s7",
+      "day": 21,
+      "time": null,
+      "user_request": "Write the RFC so the whole engineering team can review and comment. Include the technical details but make it accessible to junior engineers too.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Okay, we need to get the RFC written so everyone can review it. We need to make sure the technical details are there but it's also accessible for the junior engineers. Let's break it down with clear sections and explanations, like we did with the notification service doc."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it. We can structure it with sections for a comprehensive overview. Here's a draft:\n\n---\n\n**RFC Number**: RFC-2026-003\n\n**Title**: Decomposing the Django Monolith into Domain Services\n\n**Status**: Draft, open for comments until March 7\n\n### Problem Statement\n- Deploy time is currently 25 minutes, causing significant downtime.\n- Team conflicts arise frequently as multiple engineers work in overlapping areas.\n- The blast radius of any change affects the entire application.\n\n### Proposed Solution\n- We will use a strangler fig pattern to extract 6 domain services over 18 months. This allows us to incrementally migrate without major disruptions.\n\n### Architecture\n- Transition from a monolith to microservices.\n- Use RabbitMQ for asynchronous events, gRPC for synchronous queries, and an API gateway for external traffic.\n- Initially, services will share a PostgreSQL database, with plans to split databases as we progress.\n\n**Architecture Diagram**:\n- The diagram shows a transition from a monolithic system to a microservices-based architecture. It includes a dual-write period where both the monolith and microservices update data.\n\n### Migration Strategy\n- Start with two services: notifications and analytics.\n- Notifications service is live; the analytics service will consume events and build its own read-optimized store using ClickHouse.\n\n### Alternatives Considered\n- **Kubernetes**: Decided against due to its complexity for just six services; ECS Fargate is simpler.\n- **Rewriting in Go**: Our team's expertise is in Python, and the migration is already risky enough.\n\n### FAQ\n- **Why not Kubernetes?**: Too complex for our current scale of six services.\n- **Why not rewrite in Go?**: Team expertise in Python makes it a less risky choice.\n- **What about my Django app?**: Shared utilities will become a pip package for easy reuse.\n\n### Glossary\n- **Strangler Fig**: A pattern for gradually replacing an old system with a new one.\n- **CDC (Change Data Capture)**: Captures changes in a database for processing.\n- **Event Sourcing**: Storing all changes to an application state as a sequence of events.\n- **gRPC**: A high-performance, open-source universal RPC framework.\n- **Dead Letter Queue**: A queue used to hold messages that cannot be processed.\n\n---\n\nDoes this cover what you had in mind?"
+        },
+        {
+          "role": "user",
+          "content": "Looks comprehensive. But tbh, I'm not sure about the 'shared utilities become a pip package' part. Isn't that adding another layer of complexity? We could end up maintaining that too, no?"
+        },
+        {
+          "role": "assistant",
+          "content": "You're right, packaging shared utilities as a pip package could introduce maintenance overhead. The idea is to ease the transition by centralizing common functionality, but we should definitely weigh the complexity against the benefits. One alternative is to keep these utilities within each service but enforce a consistent code style across teams. What do you think?"
+        },
+        {
+          "role": "user",
+          "content": "Yeah, maybe starting with local utilities makes sense. We can always extract them later if needed. Oh also, let's make sure we run this by Sarah before finalizing. Her perspective on debugging challenges is pretty crucial."
+        }
+      ]
+    }
+  ],
+  "qa_pairs": [
+    {
+      "question": "How many Django apps are in the monolith and how many true domain boundaries exist?",
+      "answer": "47 Django apps but only 6 true domain boundaries: auth/users, orders/payments, inventory, notifications, analytics, and content/CMS. The other 41 apps are shared utilities.",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What migration pattern was chosen and why?",
+      "answer": "Strangler fig pattern — extract services one at a time while keeping the monolith running. Big-bang rewrite was too risky with 12 engineers. Each extraction is bounded and can be rolled back independently.",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What is the recommended service extraction order?",
+      "answer": "Notifications → analytics → content → inventory → orders → auth (least coupled to most coupled)",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What communication protocols are used between services?",
+      "answer": "Event-driven with RabbitMQ for async communication (~80% of calls), gRPC for synchronous queries (~20%), and REST via Kong API Gateway for external clients.",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How were Sarah's concerns about microservices addressed?",
+      "answer": "Debugging: distributed tracing with Jaeger and centralized logging with ELK. Latency: gRPC adds ~2ms per hop, total ~6ms for 3-hop flows (within P95 target of <500ms). DevOps maturity: start with just 2 low-risk services (notifications + analytics), evaluate after 2 months.",
+      "evidence_sessions": [
+        "s3"
+      ],
+      "type": "cross_session",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "Why was Kafka not chosen for event communication?",
+      "answer": "Kafka was considered overkill for the scale. RabbitMQ with topic exchanges was chosen instead.",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How does the notification service ensure delivery guarantees?",
+      "answer": "At-least-once delivery via RabbitMQ acknowledgment, deduplication by event_id + channel, dead letter queue for failed deliveries with 3 retries using exponential backoff.",
+      "evidence_sessions": [
+        "s4"
+      ],
+      "type": "artifact_content",
+      "difficulty": "detail"
+    },
+    {
+      "question": "Why was ClickHouse chosen for the analytics service?",
+      "answer": "PostgreSQL struggles with analytical queries (aggregations over millions of rows). ClickHouse is columnar, handles time-series aggregations 10-100x faster, and the analytics workload is pure read-append. Storage is also 4x more efficient (50GB/year vs 200GB in PostgreSQL due to columnar compression).",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What is the total migration timeline and staffing requirement?",
+      "answer": "18 months for full decomposition. 4 engineers dedicated (rotating) plus 2 shared infrastructure engineers. Expect 20-30% schedule slip.",
+      "evidence_sessions": [
+        "s6"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What was the notification service migration strategy to ensure zero disruption?",
+      "answer": "Dual-write period where both old and new code runs. New service logs what it WOULD send, compared against what monolith actually sends. Switchover happens once comparison shows 100% parity for 1 week.",
+      "evidence_sessions": [
+        "s4"
+      ],
+      "type": "artifact_content",
+      "difficulty": "detail"
+    },
+    {
+      "question": "What is the RFC number and when is the comment deadline?",
+      "answer": "RFC-2026-003, open for comments until March 7",
+      "evidence_sessions": [
+        "s7"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What database strategy was chosen for the initial migration phase?",
+      "answer": "Shared PostgreSQL initially with schema-level isolation (tables prefixed by domain like orders_, inventory_, auth_). Database split to per-service databases happens in a later phase once service boundaries are proven.",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How does the analytics service get data from the monolith?",
+      "answer": "Two sources: domain events from RabbitMQ (order.placed, user.registered, etc.) and a CDC stream from PostgreSQL using Debezium. Historical data is backfilled via pg_dump → transform → ClickHouse bulk insert.",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "artifact_content",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "What causes the 25-minute deploy time?",
+      "answer": "The test suite, not the build. Build takes 3 minutes, but the full test suite takes 22 minutes — 4,800 tests with heavy database fixture setup.",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "single-hop"
+    }
+  ],
+  "persona": {
+    "role": "Tech lead, 7 years experience, promoted from senior engineer 6 months ago",
+    "communication_style": "thoughtful and collaborative, often presents their own analysis before asking for input, writes longer messages with clear structure, uses 'we' instead of 'I'",
+    "quirks": [
+      "references team members by name when discussing constraints ('Sarah thinks...')",
+      "uses 'tbh' when being candid about concerns",
+      "sometimes sends a follow-up message seconds after the first with 'oh also' or 'one more thing'"
+    ],
+    "context": "E-commerce marketplace in Seoul, 120-person eng team (12 backend), Django monolith serving 500K daily active users, expanding to Japan"
+  }
+}

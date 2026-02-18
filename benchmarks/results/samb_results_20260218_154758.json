@@ -1,0 +1,455 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-18T06:47:58.499703+00:00",
+    "benchmark": "samb",
+    "config": {
+      "adapters": [
+        "sayou",
+        "mem0"
+      ],
+      "scenarios": [
+        "01",
+        "03",
+        "08"
+      ],
+      "k": 10,
+      "answer_model": "gpt-4o-mini",
+      "judge_model": "gpt-4o-mini",
+      "n_bootstrap": 1000
+    }
+  },
+  "summary": {
+    "sayou": {
+      "mean_score": 0.23404255319148937,
+      "ci": "[0.135, 0.348]"
+    },
+    "mem0": {
+      "mean_score": 0.17730496453900707,
+      "ci": "[0.099, 0.262]"
+    }
+  },
+  "per_adapter": {
+    "sayou": {
+      "answer_quality": {
+        "mean_score": 0.23404255319148937,
+        "ci_lower": 0.1347517730496454,
+        "ci_upper": 0.3475177304964539,
+        "n": 47,
+        "raw_mean_0_3": 0.7021276595744681
+      },
+      "by_qa_type": {
+        "artifact_content": {
+          "mean_score": 0.09523809523809523,
+          "ci_lower": 0.0,
+          "ci_upper": 0.2857142857142857,
+          "n": 7
+        },
+        "communication": {
+          "mean_score": 1.0,
+          "ci_lower": 1.0,
+          "ci_upper": 1.0,
+          "n": 1
+        },
+        "cross_session": {
+          "mean_score": 0.2,
+          "ci_lower": 0.0,
+          "ci_upper": 0.6,
+          "n": 5
+        },
+        "decision_reasoning": {
+          "mean_score": 0.38888888888888884,
+          "ci_lower": 0.1111111111111111,
+          "ci_upper": 0.7222222222222222,
+          "n": 6
+        },
+        "discovery_recall": {
+          "mean_score": 0.27777777777777773,
+          "ci_lower": 0.0,
+          "ci_upper": 0.611111111111111,
+          "n": 6
+        },
+        "fact_recall": {
+          "mean_score": 0.11904761904761904,
+          "ci_lower": 0.0,
+          "ci_upper": 0.2857142857142857,
+          "n": 14
+        },
+        "task": {
+          "mean_score": 0.4444444444444444,
+          "ci_lower": 0.3333333333333333,
+          "ci_upper": 0.5555555555555556,
+          "n": 6
+        },
+        "temporal": {
+          "mean_score": 0.0,
+          "ci_lower": 0.0,
+          "ci_upper": 0.0,
+          "n": 2
+        }
+      },
+      "by_difficulty": {
+        "detail": {
+          "mean_score": 0.23809523809523808,
+          "ci_lower": 0.0,
+          "ci_upper": 0.5714285714285714,
+          "n": 7
+        },
+        "multi-hop": {
+          "mean_score": 0.2619047619047619,
+          "ci_lower": 0.11845238095238149,
+          "ci_upper": 0.42857142857142855,
+          "n": 14
+        },
+        "single-hop": {
+          "mean_score": 0.21794871794871792,
+          "ci_lower": 0.07692307692307693,
+          "ci_upper": 0.37179487179487175,
+          "n": 26
+        }
+      },
+      "retrieval": {
+        "session_recall": 0.34751773049645396,
+        "session_precision": 0.45500000000000007
+      },
+      "efficiency": {
+        "total_ingest_time_ms": 302868.93504299223,
+        "retrieval_latency_p50_ms": 20.85445774719119,
+        "retrieval_latency_p95_ms": 41.977175278589115,
+        "mean_context_tokens": 511.5531914893617,
+        "total_storage_bytes": 58465
+      },
+      "task_evaluation": {
+        "mean_holistic": 1.6666666666666667,
+        "evidence_coverage_pct": 0.047619047619047616,
+        "evidence_found": 2,
+        "evidence_total": 42,
+        "per_task": [
+          {
+            "scenario_id": "scenario-01",
+            "question": "Write a security review checklist for the auth system before production launch",
+            "holistic_score": 3,
+            "holistic_reasoning": "The context provides some relevant information about user preferences for email validation, password security, and JWT usage, but it lacks specific details on security measures and checks that should be included in a security review checklist for the auth system.",
+            "evidence_found": [
+              "bcrypt v5.1.0 for password hashing"
+            ],
+            "evidence_missing": [
+              "JWT tokens expire after 15 minutes",
+              "refresh tokens in HttpOnly cookies, 7-day expiry",
+              "RS256 with 2048-bit keys",
+              "rate limiting: 5 failed attempts triggers 15-min lockout",
+              "N+1 query bug was fixed (session 3 finding)",
+              "CORS configured for specific origins only",
+              "8 API endpoints documented"
+            ],
+            "coverage_pct": 0.125
+          },
+          {
+            "scenario_id": "scenario-01",
+            "question": "Draft a technical onboarding doc for a new backend engineer joining the team, covering the auth system architecture",
+            "holistic_score": 3,
+            "holistic_reasoning": "The context provides some relevant information about the authentication system, including components like Signup/Login, Email Verification, and Password Reset. However, it lacks detailed architecture specifics and implementation guidelines that would be crucial for a comprehensive onboarding document.",
+            "evidence_found": [
+              "login optimized from 2.8s to 120ms P99"
+            ],
+            "evidence_missing": [
+              "JWT with RS256 signatures for stateless auth",
+              "bcrypt for password hashing",
+              "SendGrid for transactional email",
+              "email verification with 24-hour token expiry",
+              "password reset uses separate tokens table (not JWT)",
+              "PostgreSQL with users table schema"
+            ],
+            "coverage_pct": 0.14285714285714285
+          },
+          {
+            "scenario_id": "scenario-03",
+            "question": "Draft a follow-up email for dormant users who haven't tried the AI assistant yet",
+            "holistic_score": 1,
+            "holistic_reasoning": "The retrieved context is empty, providing no relevant information or guidance for drafting the follow-up email.",
+            "evidence_found": [],
+            "evidence_missing": [
+              "dormant segment size (8,000 users)",
+              "AI assistant feature launched on Feb 28",
+              "brand voice: energetic but professional",
+              "14-day trial offer CTA from announcement email",
+              "dormant user variant: 'We've missed you. Come back and try our biggest update yet.'",
+              "open rate of teaser for dormant segment (18.4%)"
+            ],
+            "coverage_pct": 0.0
+          },
+          {
+            "scenario_id": "scenario-03",
+            "question": "Write a campaign performance summary for the VP of Marketing covering all emails sent so far",
+            "holistic_score": 1,
+            "holistic_reasoning": "The retrieved context is empty, providing no information about the campaign or the emails sent, making it impossible to write a performance summary.",
+            "evidence_found": [],
+            "evidence_missing": [
+              "4-email sequence over 10 days",
+              "3 audience segments: power (8K), regular (26K), dormant (8K)",
+              "teaser open rate: 34.2% vs 28% benchmark",
+              "A/B test winner: Subject B at 38.1% vs Subject A at 31.4%",
+              "feature activations from email: 3,412 (8.1% of list)",
+              "revenue impact: 147 free-to-pro upgrades ($22,050 MRR)",
+              "power users: 62% activated within 24 hours"
+            ],
+            "coverage_pct": 0.0
+          },
+          {
+            "scenario_id": "scenario-08",
+            "question": "Write a board-ready memo recommending which cloud provider to choose",
+            "holistic_score": 1,
+            "holistic_reasoning": "The retrieved context is empty, providing no information or details about cloud providers, which is essential for making a recommendation.",
+            "evidence_found": [],
+            "evidence_missing": [
+              "GCP monthly cost: $612 on-demand, $480 reserved",
+              "AWS monthly cost: $847",
+              "containerization strategy to minimize lock-in",
+              "GDPR compliance: legal tech handling EU law firm data",
+              "startup credits: $100K from GCP for Startups",
+              "egress cost: AWS $0.09/GB vs GCP $0.085/GB",
+              "team migration effort: 6 weeks phased, 30 min downtime"
+            ],
+            "coverage_pct": 0.0
+          },
+          {
+            "scenario_id": "scenario-08",
+            "question": "Create a risk register for the cloud migration project",
+            "holistic_score": 1,
+            "holistic_reasoning": "The retrieved context is empty, providing no information relevant to the task of creating a risk register for the cloud migration project.",
+            "evidence_found": [],
+            "evidence_missing": [
+              "Cloud Run proprietary deployment model (medium lock-in risk)",
+              "GCP deprecated 8 products since 2020 (core services stable)",
+              "single point of failure on current Hetzner setup",
+              "30 minutes expected downtime during PostgreSQL cutover",
+              "rollback plan: DNS switch back in <5 minutes, Hetzner kept for 2 weeks",
+              "$100K credits expire in 2 years",
+              "break-even: GCP costs $3,120/year more than upgraded Hetzner"
+            ],
+            "coverage_pct": 0.0
+          }
+        ]
+      },
+      "tool_coverage": {
+        "total_queries": 47,
+        "tool_hit_rate": {
+          "grep": 0.425531914893617
+        },
+        "multi_tool_bonus_pct": 0.425531914893617
+      }
+    },
+    "mem0": {
+      "answer_quality": {
+        "mean_score": 0.17730496453900707,
+        "ci_lower": 0.09929078014184396,
+        "ci_upper": 0.2624113475177305,
+        "n": 47,
+        "raw_mean_0_3": 0.5319148936170213
+      },
+      "by_qa_type": {
+        "artifact_content": {
+          "mean_score": 0.047619047619047616,
+          "ci_lower": 0.0,
+          "ci_upper": 0.14285714285714285,
+          "n": 7
+        },
+        "communication": {
+          "mean_score": 0.0,
+          "ci_lower": 0.0,
+          "ci_upper": 0.0,
+          "n": 1
+        },
+        "cross_session": {
+          "mean_score": 0.06666666666666667,
+          "ci_lower": 0.0,
+          "ci_upper": 0.2,
+          "n": 5
+        },
+        "decision_reasoning": {
+          "mean_score": 0.0,
+          "ci_lower": 0.0,
+          "ci_upper": 0.0,
+          "n": 6
+        },
+        "discovery_recall": {
+          "mean_score": 0.0,
+          "ci_lower": 0.0,
+          "ci_upper": 0.0,
+          "n": 6
+        },
+        "fact_recall": {
+          "mean_score": 0.3095238095238095,
+          "ci_lower": 0.11904761904761904,
+          "ci_upper": 0.5238095238095237,
+          "n": 14
+        },
+        "task": {
+          "mean_score": 0.5555555555555555,
+          "ci_lower": 0.4444444444444444,
+          "ci_upper": 0.6666666666666666,
+          "n": 6
+        },
+        "temporal": {
+          "mean_score": 0.0,
+          "ci_lower": 0.0,
+          "ci_upper": 0.0,
+          "n": 2
+        }
+      },
+      "by_difficulty": {
+        "detail": {
+          "mean_score": 0.14285714285714285,
+          "ci_lower": 0.0,
+          "ci_upper": 0.42857142857142855,
+          "n": 7
+        },
+        "multi-hop": {
+          "mean_score": 0.2619047619047619,
+          "ci_lower": 0.11904761904761904,
+          "ci_upper": 0.40476190476190477,
+          "n": 14
+        },
+        "single-hop": {
+          "mean_score": 0.14102564102564102,
+          "ci_lower": 0.038461538461538464,
+          "ci_upper": 0.2435897435897436,
+          "n": 26
+        }
+      },
+      "retrieval": {
+        "session_recall": 0.7521276595744681,
+        "session_precision": 0.2656028368794326
+      },
+      "efficiency": {
+        "total_ingest_time_ms": 156843.64745626226,
+        "retrieval_latency_p50_ms": 124.74745837971568,
+        "retrieval_latency_p95_ms": 158.4050496574491,
+        "mean_context_tokens": 170.17021276595744,
+        "total_storage_bytes": 41591
+      },
+      "task_evaluation": {
+        "mean_holistic": 3.0,
+        "evidence_coverage_pct": 0.14285714285714285,
+        "evidence_found": 6,
+        "evidence_total": 42,
+        "per_task": [
+          {
+            "scenario_id": "scenario-01",
+            "question": "Write a security review checklist for the auth system before production launch",
+            "holistic_score": 1,
+            "holistic_reasoning": "The retrieved context is largely irrelevant to the task of creating a security review checklist for the auth system. It contains updates and tasks related to the auth system but lacks specific security considerations or criteria needed for a checklist.",
+            "evidence_found": [
+              "RS256 with 2048-bit keys"
+            ],
+            "evidence_missing": [
+              "JWT tokens expire after 15 minutes",
+              "refresh tokens in HttpOnly cookies, 7-day expiry",
+              "bcrypt v5.1.0 for password hashing",
+              "rate limiting: 5 failed attempts triggers 15-min lockout",
+              "N+1 query bug was fixed (session 3 finding)",
+              "CORS configured for specific origins only",
+              "8 API endpoints documented"
+            ],
+            "coverage_pct": 0.125
+          },
+          {
+            "scenario_id": "scenario-01",
+            "question": "Draft a technical onboarding doc for a new backend engineer joining the team, covering the auth system architecture",
+            "holistic_score": 2,
+            "holistic_reasoning": "The context provides some surface-level information about the authentication system and tasks related to it, but lacks comprehensive details about the architecture, specific components, and overall design needed for a technical onboarding document.",
+            "evidence_found": [],
+            "evidence_missing": [
+              "JWT with RS256 signatures for stateless auth",
+              "bcrypt for password hashing",
+              "SendGrid for transactional email",
+              "email verification with 24-hour token expiry",
+              "password reset uses separate tokens table (not JWT)",
+              "login optimized from 2.8s to 120ms P99",
+              "PostgreSQL with users table schema"
+            ],
+            "coverage_pct": 0.0
+          },
+          {
+            "scenario_id": "scenario-03",
+            "question": "Draft a follow-up email for dormant users who haven't tried the AI assistant yet",
+            "holistic_score": 4,
+            "holistic_reasoning": "The context provides key information about the user's goals and preferences for the follow-up email, such as including a video tutorial link and focusing on engaging content. However, it lacks specific details about the dormant users' characteristics or any particular messaging strategies that might be effective.",
+            "evidence_found": [],
+            "evidence_missing": [
+              "dormant segment size (8,000 users)",
+              "AI assistant feature launched on Feb 28",
+              "brand voice: energetic but professional",
+              "14-day trial offer CTA from announcement email",
+              "dormant user variant: 'We've missed you. Come back and try our biggest update yet.'",
+              "open rate of teaser for dormant segment (18.4%)"
+            ],
+            "coverage_pct": 0.0
+          },
+          {
+            "scenario_id": "scenario-03",
+            "question": "Write a campaign performance summary for the VP of Marketing covering all emails sent so far",
+            "holistic_score": 3,
+            "holistic_reasoning": "The context provides some relevant information about the user's focus on email performance and A/B testing, but it lacks specific metrics or details about the emails sent, which are crucial for a comprehensive campaign performance summary.",
+            "evidence_found": [],
+            "evidence_missing": [
+              "4-email sequence over 10 days",
+              "3 audience segments: power (8K), regular (26K), dormant (8K)",
+              "teaser open rate: 34.2% vs 28% benchmark",
+              "A/B test winner: Subject B at 38.1% vs Subject A at 31.4%",
+              "feature activations from email: 3,412 (8.1% of list)",
+              "revenue impact: 147 free-to-pro upgrades ($22,050 MRR)",
+              "power users: 62% activated within 24 hours"
+            ],
+            "coverage_pct": 0.0
+          },
+          {
+            "scenario_id": "scenario-08",
+            "question": "Write a board-ready memo recommending which cloud provider to choose",
+            "holistic_score": 4,
+            "holistic_reasoning": "The context provides a solid overview of the key considerations for choosing a cloud provider, including costs, features, and concerns about vendor lock-in. However, it lacks specific details on the migration plan and risks associated with moving to GCP, which would be necessary for a complete board-ready memo.",
+            "evidence_found": [
+              "containerization strategy to minimize lock-in"
+            ],
+            "evidence_missing": [
+              "GCP monthly cost: $612 on-demand, $480 reserved",
+              "AWS monthly cost: $847",
+              "GDPR compliance: legal tech handling EU law firm data",
+              "startup credits: $100K from GCP for Startups",
+              "egress cost: AWS $0.09/GB vs GCP $0.085/GB",
+              "team migration effort: 6 weeks phased, 30 min downtime"
+            ],
+            "coverage_pct": 0.14285714285714285
+          },
+          {
+            "scenario_id": "scenario-08",
+            "question": "Create a risk register for the cloud migration project",
+            "holistic_score": 4,
+            "holistic_reasoning": "The context provides key information about risks, such as egress costs and reliability concerns, as well as details on the migration plan and investor expectations. However, it lacks specific risk categories and mitigation strategies that would be necessary for a comprehensive risk register.",
+            "evidence_found": [
+              "Cloud Run proprietary deployment model (medium lock-in risk)",
+              "30 minutes expected downtime during PostgreSQL cutover",
+              "rollback plan: DNS switch back in <5 minutes, Hetzner kept for 2 weeks",
+              "break-even: GCP costs $3,120/year more than upgraded Hetzner"
+            ],
+            "evidence_missing": [
+              "GCP deprecated 8 products since 2020 (core services stable)",
+              "single point of failure on current Hetzner setup",
+              "$100K credits expire in 2 years"
+            ],
+            "coverage_pct": 0.5714285714285714
+          }
+        ]
+      }
+    }
+  },
+  "significance_tests": [
+    {
+      "system_a": "mem0",
+      "system_b": "sayou",
+      "mean_diff": -0.056737588652482275,
+      "p_value": 0.37,
+      "significant": false,
+      "ci": "[-0.1915, 0.0638]"
+    }
+  ]
+}
