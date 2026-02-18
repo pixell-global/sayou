@@ -1,0 +1,311 @@
+id: scenario-01
+title: "Build User Authentication for a Web App"
+domain: software-engineering
+category: build
+description: >
+  A developer asks their AI agent to implement authentication for a new
+  web application. Over 6 sessions spanning two weeks, the system evolves
+  from basic login to production-ready auth with email verification,
+  password reset, and API documentation.
+total_sessions: 6
+estimated_tokens: 12000
+
+persona:
+  role: "Senior backend engineer, 5 years experience"
+  communication_style: "concise and direct, skips pleasantries, uses lowercase for casual messages, writes longer messages when explaining technical context"
+  quirks:
+    - "types fast with occasional typos (teh, adn)"
+    - "uses abbreviations like 'prob', 'tbh', 'imo'"
+    - "sometimes pastes error output mid-sentence without warning"
+  context: "Series B fintech startup in London, 25-person eng team, building a payment processing platform"
+
+sessions:
+  - id: s1
+    day: 1
+    user_request: "I need to add authentication to my Express.js app. Users should be able to sign up and log in."
+    conversation_topics:
+      - Discussing JWT vs session-based auth
+      - Choosing a password hashing library
+      - Database schema for users table
+    decisions:
+      - choice: "JWT with RS256 signatures"
+        reasoning: "Frontend is a React SPA deployed on CDN — needs stateless auth. Sessions would require sticky sessions or shared session store."
+        alternatives_considered: ["express-session with Redis", "Passport.js with cookie sessions"]
+      - choice: "bcrypt v5.1.0 for password hashing"
+        reasoning: "Industry standard, adaptive cost factor, well-audited. Argon2 considered but less ecosystem support in Node."
+        alternatives_considered: ["argon2", "scrypt"]
+    artifacts:
+      - type: code
+        description: "Auth middleware (src/middleware/auth.js)"
+        key_facts:
+          - "JWT tokens expire after 15 minutes"
+          - "Refresh tokens stored in HttpOnly cookies, expire after 7 days"
+          - "Token signing uses RS256 with 2048-bit keys"
+      - type: code
+        description: "User model (src/models/user.js)"
+        key_facts:
+          - "Users table has columns: id (UUID), email (unique), password_hash, created_at, updated_at"
+          - "Email is validated with a regex before insertion"
+          - "Passwords require minimum 8 characters, one uppercase, one number"
+      - type: code
+        description: "Auth routes (src/routes/auth.js)"
+        key_facts:
+          - "POST /auth/signup — creates user, returns JWT"
+          - "POST /auth/login — validates credentials, returns JWT + sets refresh cookie"
+          - "POST /auth/refresh — exchanges refresh token for new JWT"
+          - "POST /auth/logout — clears refresh cookie"
+    entities: ["Express.js", "bcrypt", "jsonwebtoken", "PostgreSQL"]
+
+  - id: s2
+    day: 3
+    user_request: "Add email verification. Users should verify their email before they can access protected routes."
+    conversation_topics:
+      - Choosing an email service provider
+      - Designing the verification flow
+      - Token format for verification links
+    decisions:
+      - choice: "SendGrid for transactional email"
+        reasoning: "Free tier allows 100 emails/day, good Node SDK, reliable delivery. SES requires AWS account setup we don't have yet."
+        alternatives_considered: ["AWS SES", "Mailgun", "Resend"]
+      - choice: "Verification tokens as signed JWTs with 24-hour expiry"
+        reasoning: "Reuses existing JWT infrastructure. No need for a separate tokens table."
+    artifacts:
+      - type: code
+        description: "Email service (src/services/email.js)"
+        key_facts:
+          - "Uses @sendgrid/mail v7.7.0"
+          - "Verification emails sent from noreply@myapp.com"
+          - "Email template includes app logo and verify button"
+      - type: code
+        description: "Verification routes (src/routes/verify.js)"
+        key_facts:
+          - "GET /auth/verify/:token — verifies email, sets user.verified = true"
+          - "POST /auth/resend-verification — rate limited to 3 per hour"
+      - type: code
+        description: "Updated user model"
+        key_facts:
+          - "Added 'verified' boolean column, defaults to false"
+          - "Added 'verification_sent_at' timestamp column"
+    builds_on: [s1]
+    entities: ["SendGrid", "JWT"]
+
+  - id: s3
+    day: 5
+    user_request: "Login is really slow — takes about 3 seconds. Can you figure out why?"
+    conversation_topics:
+      - Profiling the login endpoint
+      - Identifying the bottleneck
+      - Fixing the performance issue
+    discoveries:
+      - finding: "N+1 query in user lookup"
+        detail: "The login handler was calling findUserByEmail() which ran 3 separate queries: one for user, one for roles, one for permissions. Each query took ~400ms due to missing indexes."
+      - finding: "Missing index on email column"
+        detail: "The users table had no index on the email column. Sequential scan on 50K test records."
+    artifacts:
+      - type: code
+        description: "Optimized user query with JOIN"
+        key_facts:
+          - "Combined 3 queries into 1 with LEFT JOIN on roles and permissions"
+          - "Added B-tree index on users.email"
+          - "Login time reduced from 2.8s to 120ms (P99)"
+      - type: data
+        description: "Performance test results"
+        key_facts:
+          - "Before fix: P50=1.2s, P99=2.8s at 100 concurrent users"
+          - "After fix: P50=45ms, P99=120ms at 100 concurrent users"
+          - "Database CPU dropped from 85% to 12% during load test"
+    builds_on: [s1]
+    entities: ["PostgreSQL"]
+
+  - id: s4
+    day: 8
+    user_request: "Add password reset functionality"
+    conversation_topics:
+      - Designing the reset flow
+      - Security considerations for reset tokens
+    decisions:
+      - choice: "Separate reset tokens table instead of JWT"
+        reasoning: "Reset tokens must be single-use and revocable. JWTs can't be revoked without a blocklist. A simple table with token_hash, user_id, expires_at, used_at is cleaner."
+    artifacts:
+      - type: code
+        description: "Password reset routes"
+        key_facts:
+          - "POST /auth/forgot-password — sends reset email with 1-hour token"
+          - "POST /auth/reset-password — validates token, updates password, marks token used"
+          - "Reset tokens are hashed with SHA-256 before storage"
+          - "Rate limited to 5 reset requests per email per day"
+      - type: code
+        description: "Reset tokens migration"
+        key_facts:
+          - "Table: reset_tokens (id, token_hash, user_id, expires_at, used_at, created_at)"
+          - "Foreign key to users table with CASCADE delete"
+    builds_on: [s1, s2]
+    entities: ["SendGrid", "SHA-256"]
+
+  - id: s5
+    day: 12
+    user_request: "Write API documentation for all the auth endpoints"
+    conversation_topics:
+      - Documentation format and tooling
+      - Listing all endpoints with request/response schemas
+    artifacts:
+      - type: document
+        description: "API documentation (docs/auth-api.md)"
+        key_facts:
+          - "Documents 8 endpoints: signup, login, refresh, logout, verify, resend-verification, forgot-password, reset-password"
+          - "Each endpoint includes: method, path, request body, response format, error codes, rate limits"
+          - "Authentication section explains JWT flow with RS256"
+          - "Includes curl examples for each endpoint"
+    builds_on: [s1, s2, s3, s4]
+
+  - id: s6
+    day: 14
+    user_request: "Send a progress update to the client about the auth system"
+    conversation_topics:
+      - Summarizing two weeks of work
+      - Highlighting key decisions and metrics
+    artifacts:
+      - type: email
+        description: "Client progress update email"
+        key_facts:
+          - "Subject: Auth System Complete — Progress Update"
+          - "Mentions all 4 features: signup/login, email verification, password reset, API docs"
+          - "Highlights performance: login P99 reduced from 2.8s to 120ms"
+          - "Notes SendGrid for email (100/day free tier, sufficient for beta)"
+          - "Recommends next steps: rate limiting review, OAuth social login"
+          - "Sent to client@example.com"
+    builds_on: [s1, s2, s3, s4, s5]
+
+qa_pairs:
+  # Fact recall
+  - question: "What password hashing library does the auth system use?"
+    answer: "bcrypt v5.1.0"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How long do JWT access tokens last before expiring?"
+    answer: "15 minutes"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What email service is used for sending verification emails?"
+    answer: "SendGrid"
+    evidence_sessions: [s2]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What is the rate limit for resending verification emails?"
+    answer: "3 per hour"
+    evidence_sessions: [s2]
+    type: fact_recall
+    difficulty: detail
+
+  # Decision reasoning
+  - question: "Why was JWT chosen over session-based authentication?"
+    answer: "The frontend is a React SPA deployed on CDN, which needs stateless auth. Sessions would require sticky sessions or a shared session store."
+    evidence_sessions: [s1]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "Why does password reset use a database table instead of JWTs?"
+    answer: "Reset tokens must be single-use and revocable. JWTs can't be revoked without a blocklist."
+    evidence_sessions: [s4]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "Why was SendGrid chosen over AWS SES?"
+    answer: "SendGrid has a free tier with 100 emails/day and a good Node SDK. SES requires AWS account setup that wasn't available yet."
+    evidence_sessions: [s2]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  # Discovery recall
+  - question: "What caused the slow login performance?"
+    answer: "N+1 query in user lookup — the login handler ran 3 separate queries (user, roles, permissions) and there was no index on the email column."
+    evidence_sessions: [s3]
+    type: discovery_recall
+    difficulty: single-hop
+
+  - question: "What was the login latency before and after the performance fix?"
+    answer: "Before: P99 was 2.8s. After: P99 was 120ms."
+    evidence_sessions: [s3]
+    type: discovery_recall
+    difficulty: detail
+
+  # Artifact content
+  - question: "How many auth API endpoints are documented?"
+    answer: "8 endpoints: signup, login, refresh, logout, verify, resend-verification, forgot-password, reset-password"
+    evidence_sessions: [s5]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "What columns does the users table have?"
+    answer: "id (UUID), email (unique), password_hash, created_at, updated_at, verified (boolean), verification_sent_at (timestamp)"
+    evidence_sessions: [s1, s2]
+    type: artifact_content
+    difficulty: multi-hop
+
+  # Cross-session
+  - question: "How does the password reset feature send emails?"
+    answer: "It uses SendGrid, the same email service set up for email verification in session 2."
+    evidence_sessions: [s2, s4]
+    type: cross_session
+    difficulty: multi-hop
+
+  - question: "What performance improvement was mentioned in the client email?"
+    answer: "Login P99 reduced from 2.8s to 120ms"
+    evidence_sessions: [s3, s6]
+    type: cross_session
+    difficulty: multi-hop
+
+  # Temporal
+  - question: "What was worked on during the second week?"
+    answer: "Password reset functionality (day 8), API documentation (day 12), and client progress update email (day 14)"
+    evidence_sessions: [s4, s5, s6]
+    type: temporal
+    difficulty: multi-hop
+
+  - question: "What was the first feature implemented after the initial auth setup?"
+    answer: "Email verification, added on day 3"
+    evidence_sessions: [s2]
+    type: temporal
+    difficulty: single-hop
+
+  # Communication recall
+  - question: "What next steps were recommended to the client?"
+    answer: "Rate limiting review and OAuth social login"
+    evidence_sessions: [s6]
+    type: communication
+    difficulty: single-hop
+
+  # Task evaluation
+  - question: "Write a security review checklist for the auth system before production launch"
+    answer: "Context should include all required evidence items"
+    type: task
+    difficulty: multi-hop
+    evidence_sessions: [s1, s2, s3, s4, s5]
+    required_evidence:
+      - "JWT tokens expire after 15 minutes"
+      - "refresh tokens in HttpOnly cookies, 7-day expiry"
+      - "RS256 with 2048-bit keys"
+      - "bcrypt v5.1.0 for password hashing"
+      - "rate limiting: 5 failed attempts triggers 15-min lockout"
+      - "N+1 query bug was fixed (session 3 finding)"
+      - "CORS configured for specific origins only"
+      - "8 API endpoints documented"
+
+  - question: "Draft a technical onboarding doc for a new backend engineer joining the team, covering the auth system architecture"
+    answer: "Context should include all required evidence items"
+    type: task
+    difficulty: multi-hop
+    evidence_sessions: [s1, s2, s3, s4, s5]
+    required_evidence:
+      - "JWT with RS256 signatures for stateless auth"
+      - "bcrypt for password hashing"
+      - "SendGrid for transactional email"
+      - "email verification with 24-hour token expiry"
+      - "password reset uses separate tokens table (not JWT)"
+      - "login optimized from 2.8s to 120ms P99"
+      - "PostgreSQL with users table schema"

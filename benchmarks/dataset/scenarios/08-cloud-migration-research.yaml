@@ -1,0 +1,256 @@
+id: scenario-08
+title: "Research and Compare Cloud Providers for Infrastructure Migration"
+domain: infrastructure
+category: investigate
+description: >
+  A CTO asks the agent to research moving from a single-server setup to
+  a proper cloud infrastructure. Over 6 sessions across 2 weeks, the agent
+  compares AWS, GCP, and Azure across multiple dimensions, builds a cost
+  model, and produces a migration recommendation with a board-ready memo.
+total_sessions: 6
+estimated_tokens: 13000
+
+persona:
+  role: "CTO and co-founder, 12 years experience, hands-on technical leader"
+  communication_style: "strategic but impatient, prefers high-level summaries with the option to drill down, interrupts with new questions before previous ones are fully answered"
+  quirks:
+    - "frequently references 'the board' or 'investors' as constraints on decisions"
+    - "uses 'what's the tldr' when responses get long"
+    - "occasionally sends one-word follow-ups like 'costs?' or 'timeline?' or 'risks?'"
+  context: "Legal tech startup in Amsterdam, 30-person company, document automation for EU law firms, handling GDPR-sensitive client data"
+
+sessions:
+  - id: s1
+    day: 1
+    user_request: "We're running everything on a single Hetzner dedicated server (64GB RAM, 8 cores, 2TB SSD, €60/month). We're growing and need to move to a real cloud. Compare AWS, GCP, and Azure for our use case. We run a Python API, a React frontend, PostgreSQL, Redis, and Celery workers."
+    conversation_topics:
+      - Current infrastructure constraints
+      - Cloud provider comparison criteria
+      - Workload characterization
+    discoveries:
+      - finding: "Current server utilization: CPU avg 35%, peaks at 82% during batch jobs (9-10 AM UTC)"
+        detail: "Most of the day is underutilized. Batch processing (report generation, email sends) spikes CPU. If batch moved to separate workers, the API server would never exceed 40%."
+      - finding: "PostgreSQL uses 28GB RAM, Redis uses 4GB, API processes use ~8GB"
+        detail: "Total memory usage is ~40GB of 64GB. PostgreSQL is the bottleneck — large analytical queries during business hours compete with OLTP workload."
+    artifacts:
+      - type: document
+        description: "Cloud provider comparison matrix"
+        key_facts:
+          - "Criteria: compute pricing, managed database (PostgreSQL), managed Redis, container orchestration, CDN, CI/CD integration, startup credits, free tier"
+          - "AWS: Most mature, best ecosystem, most expensive at our scale. ECS Fargate pricing: ~$180/month for equivalent compute"
+          - "GCP: Best managed PostgreSQL (Cloud SQL), generous startup credits ($100K for Y Combinator), 30% sustained use discount. Equivalent compute: ~$140/month"
+          - "Azure: Best for Microsoft shops, strong enterprise features. Equivalent compute: ~$160/month. Weakest container orchestration UX"
+          - "All three support our stack without modification"
+          - "Startup credits: AWS Activate ($5K-$100K), GCP for Startups ($100K), Azure for Startups ($25K-$150K)"
+    entities: ["AWS", "GCP", "Azure", "Hetzner", "PostgreSQL", "Redis"]
+
+  - id: s2
+    day: 4
+    user_request: "Build a detailed cost model for each provider. We have about 2,000 DAU, 50 requests/second average, 200 peak. We store 500GB of data and serve 2TB of assets per month."
+    conversation_topics:
+      - Right-sizing instances
+      - Reserved vs on-demand pricing
+      - Hidden costs (egress, monitoring, logging)
+    artifacts:
+      - type: document
+        description: "Detailed cost model spreadsheet"
+        key_facts:
+          - "AWS monthly estimate: $847 (Fargate $180, RDS PostgreSQL $195, ElastiCache $98, ALB $45, S3+CloudFront $120, CloudWatch $35, egress $95, misc $79)"
+          - "GCP monthly estimate: $612 (Cloud Run $110, Cloud SQL $165, Memorystore $78, Load Balancer $35, GCS+CDN $90, monitoring free tier, egress $65, misc $69)"
+          - "Azure monthly estimate: $738 (Container Apps $145, Azure Database $185, Azure Cache $88, App Gateway $55, Blob+CDN $105, monitoring $30, egress $75, misc $55)"
+          - "Current Hetzner cost: $65/month (BUT: no redundancy, no managed backups, no auto-scaling, single point of failure)"
+          - "Cost with reserved instances (1-year): AWS $620, GCP $480, Azure $560"
+          - "Biggest hidden cost: egress pricing — AWS charges $0.09/GB, GCP $0.085/GB for first 10TB"
+          - "Optimization opportunity: serving assets through CDN reduces egress by ~60%"
+    builds_on: [s1]
+
+  - id: s3
+    day: 7
+    user_request: "GCP looks cheapest but I'm worried about vendor lock-in and their track record of killing products. How real is that risk?"
+    conversation_topics:
+      - GCP product deprecation history
+      - Lock-in assessment by service
+      - Multi-cloud considerations
+    discoveries:
+      - finding: "GCP has deprecated 8 major products since 2020, but core infrastructure services (Compute, Cloud SQL, GKE, Cloud Run) have never been deprecated"
+        detail: "Deprecated products were mostly consumer/niche: Google IoT Core, Cloud Gaming, Hire by Google, etc. Core IaaS and PaaS services are stable. Google has made public commitments to enterprise stability."
+      - finding: "Our biggest lock-in risk is Cloud Run's proprietary deployment model"
+        detail: "Cloud Run uses a Knative-based API but has proprietary extensions (concurrency controls, min instances, traffic splitting) that don't translate directly to AWS/Azure. If we containerize properly, migration would take ~2 weeks of DevOps work."
+    decisions:
+      - choice: "Accept GCP with a containerization-first strategy to minimize lock-in"
+        reasoning: "Use standard Docker containers everywhere. Avoid GCP-specific SDKs where possible — use Postgres protocol directly (not Cloud SQL API), use S3-compatible GCS API. Cloud Run is the main lock-in point, but it's based on Knative and migrating to ECS/Container Apps would take 2 weeks, not months."
+    artifacts:
+      - type: document
+        description: "Lock-in risk assessment"
+        key_facts:
+          - "Low risk: PostgreSQL (Cloud SQL uses standard Postgres protocol), Redis (Memorystore uses standard Redis), Storage (GCS has S3-compatible API)"
+          - "Medium risk: Cloud Run (proprietary deployment config, but standard containers underneath)"
+          - "High risk: BigQuery (if used for analytics — proprietary SQL extensions, no equivalent on AWS)"
+          - "Mitigation: containerize everything, use standard protocols, avoid proprietary SDKs"
+          - "Estimated migration effort if leaving GCP: 2 weeks of DevOps work"
+    builds_on: [s1, s2]
+
+  - id: s4
+    day: 9
+    user_request: "What would the actual migration plan look like? I need to understand the timeline and risk."
+    conversation_topics:
+      - Migration phases
+      - Downtime requirements
+      - Rollback strategy
+    decisions:
+      - choice: "Phased migration over 6 weeks: stateless services first, database last"
+        reasoning: "Stateless services (API, frontend, workers) can run on both Hetzner and GCP simultaneously behind a load balancer. Database migration is the riskiest part — do it last when everything else is proven. This minimizes downtime to a single 30-minute window for the DB cutover."
+    artifacts:
+      - type: document
+        description: "Migration plan with timeline"
+        key_facts:
+          - "Phase 1 (Week 1-2): Set up GCP project, networking (VPC, firewall), container registry, CI/CD"
+          - "Phase 2 (Week 2-3): Deploy stateless services to Cloud Run, run in parallel with Hetzner behind global load balancer"
+          - "Phase 3 (Week 3-4): Migrate Redis to Memorystore (dump/restore, <5 min downtime)"
+          - "Phase 4 (Week 4-5): Migrate PostgreSQL to Cloud SQL (pg_dump/restore for initial copy, then logical replication for sync)"
+          - "Phase 5 (Week 5): DNS cutover, monitor for 1 week"
+          - "Phase 6 (Week 6): Decommission Hetzner server"
+          - "Total expected downtime: 30 minutes during PostgreSQL cutover"
+          - "Rollback plan: keep Hetzner running for 2 weeks after cutover, DNS can switch back in <5 minutes"
+          - "Database migration strategy: pg_dump full backup → restore to Cloud SQL → enable logical replication for delta sync → cutover when lag < 1 second"
+    builds_on: [s1, s2, s3]
+
+  - id: s5
+    day: 11
+    user_request: "I need to convince the board. Can you draft a 1-page executive memo recommending GCP?"
+    artifacts:
+      - type: document
+        description: "Board executive memo: Cloud migration recommendation"
+        key_facts:
+          - "Title: Infrastructure Migration Recommendation — Move to Google Cloud Platform"
+          - "Current state: single server, no redundancy, €65/month, single point of failure"
+          - "Recommendation: migrate to GCP over 6 weeks"
+          - "Cost: $480/month with reserved instances ($612 on-demand) — 8x current, but includes: automatic failover, managed backups, auto-scaling, CDN, monitoring"
+          - "ROI argument: 1 hour of downtime costs ~$4,200 in lost revenue (based on $50 ARPU, 2000 DAU). Current setup has no failover — any hardware failure = hours of downtime"
+          - "Risk mitigation: phased approach, 30 min max downtime, 2-week rollback window"
+          - "Alternative considered: staying on Hetzner with added redundancy would cost ~€200/month but still lacks managed services, auto-scaling, and CDN"
+          - "Startup credits: applied for GCP for Startups program, potential $100K in credits (covers ~17 months)"
+    builds_on: [s1, s2, s3, s4]
+
+  - id: s6
+    day: 14
+    user_request: "Board approved! But the CFO asked about the $100K credits — when do they expire? And what happens to our costs when they run out? Also, she wants to know our break-even point vs just upgrading Hetzner."
+    conversation_topics:
+      - Credit expiration and planning
+      - Long-term cost trajectory
+      - Break-even analysis
+    artifacts:
+      - type: document
+        description: "Financial analysis: GCP credits and break-even"
+        key_facts:
+          - "GCP for Startups credits: $100K, valid for 2 years from approval"
+          - "At $480/month (reserved), credits last ~17 months (leaving 7 months buffer before expiration)"
+          - "After credits: $480/month = $5,760/year"
+          - "Hetzner upgrade path: €200/month for 2 servers with manual failover = $2,640/year"
+          - "Break-even analysis: GCP costs $3,120/year more than upgraded Hetzner"
+          - "But: at 2,000 DAU and $50 ARPU, one 4-hour outage costs $16,800 — GCP pays for itself if it prevents ONE major outage per year"
+          - "Growth projection: at 10,000 DAU (12-month target), GCP auto-scales; Hetzner would need 4-5 servers with manual orchestration costing €600+/month, narrowing the gap to ~$1,000/year"
+          - "Recommendation: GCP is more expensive but the reliability premium is justified above 1,000 DAU"
+    builds_on: [s5]
+
+qa_pairs:
+  - question: "Which cloud provider was recommended and what was the monthly cost?"
+    answer: "GCP was recommended at $480/month with reserved instances ($612 on-demand)"
+    evidence_sessions: [s2, s5]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was the current infrastructure setup before migration?"
+    answer: "A single Hetzner dedicated server with 64GB RAM, 8 cores, 2TB SSD costing €60/month, running Python API, React frontend, PostgreSQL, Redis, and Celery workers."
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "Why was GCP chosen over AWS and Azure?"
+    answer: "GCP was cheapest ($612/month on-demand vs AWS $847 and Azure $738), offered the best managed PostgreSQL, had generous startup credits ($100K), and provided 30% sustained use discounts."
+    evidence_sessions: [s1, s2]
+    type: decision_reasoning
+    difficulty: multi-hop
+
+  - question: "What was the biggest lock-in risk with GCP?"
+    answer: "Cloud Run's proprietary deployment model. It uses Knative-based API with proprietary extensions (concurrency controls, min instances, traffic splitting) that don't translate directly to AWS/Azure. Migration would take ~2 weeks."
+    evidence_sessions: [s3]
+    type: discovery_recall
+    difficulty: single-hop
+
+  - question: "How long was the planned migration timeline and what was the expected downtime?"
+    answer: "6-week phased migration with 30 minutes of expected downtime during the PostgreSQL cutover."
+    evidence_sessions: [s4]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was the database migration strategy?"
+    answer: "pg_dump full backup → restore to Cloud SQL → enable logical replication for delta sync → cutover when replication lag < 1 second."
+    evidence_sessions: [s4]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "What was the ROI argument presented to the board?"
+    answer: "1 hour of downtime costs ~$4,200 in lost revenue (based on $50 ARPU, 2000 DAU). The current single-server setup has no failover, so any hardware failure means hours of downtime. GCP pays for itself if it prevents one major outage per year."
+    evidence_sessions: [s5]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How long would the $100K GCP startup credits last?"
+    answer: "~17 months at $480/month reserved pricing, leaving 7 months buffer before the 2-year expiration."
+    evidence_sessions: [s6]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was the break-even analysis between GCP and upgraded Hetzner?"
+    answer: "GCP costs $3,120/year more than upgraded Hetzner ($5,760 vs $2,640). But at 10,000 DAU (12-month target), Hetzner would need 4-5 servers costing €600+/month with manual orchestration, narrowing the gap to ~$1,000/year. The reliability premium is justified above 1,000 DAU."
+    evidence_sessions: [s6]
+    type: cross_session
+    difficulty: multi-hop
+
+  - question: "What was the rollback plan if the migration failed?"
+    answer: "Keep Hetzner running for 2 weeks after cutover. DNS can switch back to Hetzner in less than 5 minutes."
+    evidence_sessions: [s4]
+    type: artifact_content
+    difficulty: single-hop
+
+  - question: "What is the biggest hidden cost in cloud pricing?"
+    answer: "Egress pricing — AWS charges $0.09/GB, GCP $0.085/GB for the first 10TB. Serving assets through CDN reduces egress by ~60%."
+    evidence_sessions: [s2]
+    type: discovery_recall
+    difficulty: single-hop
+
+  - question: "What is GCP's track record with product deprecation?"
+    answer: "GCP has deprecated 8 major products since 2020, but they were mostly consumer/niche products (IoT Core, Cloud Gaming, etc.). Core infrastructure services (Compute, Cloud SQL, GKE, Cloud Run) have never been deprecated."
+    evidence_sessions: [s3]
+    type: discovery_recall
+    difficulty: single-hop
+
+  # Task evaluation
+  - question: "Write a board-ready memo recommending which cloud provider to choose"
+    answer: "Context should include all required evidence items"
+    type: task
+    difficulty: multi-hop
+    evidence_sessions: [s1, s2, s3, s4]
+    required_evidence:
+      - "GCP monthly cost: $612 on-demand, $480 reserved"
+      - "AWS monthly cost: $847"
+      - "containerization strategy to minimize lock-in"
+      - "GDPR compliance: legal tech handling EU law firm data"
+      - "startup credits: $100K from GCP for Startups"
+      - "egress cost: AWS $0.09/GB vs GCP $0.085/GB"
+      - "team migration effort: 6 weeks phased, 30 min downtime"
+
+  - question: "Create a risk register for the cloud migration project"
+    answer: "Context should include all required evidence items"
+    type: task
+    difficulty: multi-hop
+    evidence_sessions: [s1, s2, s3, s4, s5, s6]
+    required_evidence:
+      - "Cloud Run proprietary deployment model (medium lock-in risk)"
+      - "GCP deprecated 8 products since 2020 (core services stable)"
+      - "single point of failure on current Hetzner setup"
+      - "30 minutes expected downtime during PostgreSQL cutover"
+      - "rollback plan: DNS switch back in <5 minutes, Hetzner kept for 2 weeks"
+      - "$100K credits expire in 2 years"
+      - "break-even: GCP costs $3,120/year more than upgraded Hetzner"

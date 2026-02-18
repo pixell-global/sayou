@@ -1,0 +1,219 @@
+id: scenario-04
+title: "Write a Quarterly Business Review Report"
+domain: business-operations
+category: communicate
+description: >
+  A chief of staff prepares the Q4 2025 business review for the board.
+  Over 6 sessions, the agent gathers data from multiple departments,
+  drafts sections, incorporates exec feedback, and finalizes the deck.
+total_sessions: 6
+estimated_tokens: 13000
+
+persona:
+  role: "Chief of staff, 8 years experience, MBA, former management consultant"
+  communication_style: "formal and structured, writes in complete sentences, uses numbered lists, rarely uses slang, prefers precision over brevity"
+  quirks:
+    - "frames requests as 'help me think through X' rather than direct asks"
+    - "occasionally uses consulting jargon (TAM, LTV:CAC, net retention, rule of 40)"
+    - "references board members by first name as if the AI knows them"
+  context: "B2B analytics company in Singapore, 150-person company, selling to enterprise clients across APAC, preparing for IPO readiness"
+
+sessions:
+  - id: s1
+    day: 1
+    user_request: "I need to prepare the Q4 2025 board deck. Can you help me structure it and pull together the key metrics?"
+    conversation_topics:
+      - Board deck structure and sections
+      - Key metrics to include
+      - Timeline for completion
+    decisions:
+      - choice: "6-section structure: Executive Summary, Revenue, Product, Engineering, Customers, 2026 Outlook"
+        reasoning: "Matches previous board decks for consistency. Board members expect this format."
+    artifacts:
+      - type: document
+        description: "Deck outline with target metrics"
+        key_facts:
+          - "Section 1: Executive Summary (1 slide)"
+          - "Section 2: Revenue & Growth (3 slides)"
+          - "Section 3: Product (2 slides)"
+          - "Section 4: Engineering & Infrastructure (2 slides)"
+          - "Section 5: Customer Success (2 slides)"
+          - "Section 6: 2026 Outlook & Asks (2 slides)"
+          - "Due to board: January 20"
+          - "Draft review with CEO: January 15"
+    entities: ["board of directors", "CEO"]
+
+  - id: s2
+    day: 3
+    user_request: "Here are the revenue numbers from finance. Draft the revenue section."
+    artifacts:
+      - type: document
+        description: "Revenue & Growth section draft"
+        key_facts:
+          - "Q4 ARR: $14.2M (up from $11.8M in Q3, +20.3% QoQ)"
+          - "Full year 2025 ARR: $14.2M (started at $6.1M in Q1, +133% YoY)"
+          - "Net Revenue Retention: 118%"
+          - "Gross margin: 72% (up from 68% in Q3)"
+          - "Q4 new logos: 47 (target was 40)"
+          - "Average deal size: $18,200 ARR (up from $15,400 in Q3)"
+          - "Sales cycle: 34 days average (down from 41 in Q3)"
+          - "Pipeline: $8.3M entering Q1 2026"
+    builds_on: [s1]
+
+  - id: s3
+    day: 5
+    user_request: "Draft the product and engineering sections. Product shipped the AI assistant and the new dashboard. Engineering migrated to Kubernetes."
+    artifacts:
+      - type: document
+        description: "Product section draft"
+        key_facts:
+          - "2 major launches: AI Assistant (Oct 15) and Analytics Dashboard v2 (Nov 20)"
+          - "AI Assistant: 4,200 weekly active users, 89% retention after 30 days"
+          - "Dashboard v2: reduced report generation time from 45s to 8s"
+          - "NPS: 52 (up from 44 in Q3)"
+          - "Feature requests closed: 127 of 203 in backlog (63%)"
+      - type: document
+        description: "Engineering section draft"
+        key_facts:
+          - "Kubernetes migration completed Nov 30 (3 months ahead of schedule)"
+          - "Infrastructure cost reduced 34% ($48K/month savings)"
+          - "Deployment frequency: 12x/week (up from 3x/week pre-Kubernetes)"
+          - "P99 API latency: 180ms (down from 420ms)"
+          - "Uptime: 99.97% (target: 99.95%)"
+          - "Team: 23 engineers (hired 5 in Q4, 2 departures)"
+    builds_on: [s1]
+
+  - id: s4
+    day: 7
+    user_request: "Now the customer success section. We had our biggest enterprise deal close this quarter."
+    artifacts:
+      - type: document
+        description: "Customer Success section draft"
+        key_facts:
+          - "Total customers: 312 (up from 265 in Q3)"
+          - "Enterprise customers: 18 (up from 12)"
+          - "Largest new deal: Meridian Corp — $420K ARR, 3-year contract"
+          - "Churn: 3.2% quarterly (down from 4.1% in Q3)"
+          - "Support ticket resolution: 4.2 hours avg (down from 6.8 hours)"
+          - "CSAT: 4.6/5.0"
+          - "Top churn reason: 'missing integrations' (28% of exit surveys)"
+          - "Customer advisory board launched with 8 founding members"
+    builds_on: [s1]
+
+  - id: s5
+    day: 10
+    user_request: "CEO reviewed the draft. She wants the executive summary rewritten to lead with the Meridian deal, and wants us to add a 2026 outlook with our Series B plans."
+    conversation_topics:
+      - Reframing exec summary around enterprise momentum
+      - Series B positioning
+    artifacts:
+      - type: document
+        description: "Revised executive summary"
+        key_facts:
+          - "Leads with: 'Q4 marked our transition to enterprise — anchored by Meridian Corp ($420K ARR)'"
+          - "Three highlights: 133% YoY ARR growth, enterprise segment 3x (6→18), infrastructure costs down 34%"
+          - "Positions company as 'enterprise-ready' for Series B narrative"
+      - type: document
+        description: "2026 Outlook & Asks section"
+        key_facts:
+          - "2026 ARR target: $30M (111% growth from $14.2M)"
+          - "Series B: targeting $25M raise at $150M pre-money, Q2 2026"
+          - "Key hires needed: VP Sales, VP Marketing, 8 engineers"
+          - "Board ask: approval for Series B process, intro to 3 target investors"
+          - "Target investors: Accel, Bessemer, IVP"
+    builds_on: [s1, s2, s3, s4]
+    entities: ["CEO", "Meridian Corp", "Series B"]
+
+  - id: s6
+    day: 12
+    user_request: "Finalize the deck and send it to the board with a cover email."
+    artifacts:
+      - type: email
+        description: "Board cover email"
+        key_facts:
+          - "To: board@company.com"
+          - "Subject: Q4 2025 Business Review — Board Meeting Jan 20"
+          - "Highlights 3 key themes: enterprise traction, operational efficiency, Series B readiness"
+          - "Attaches 12-slide deck"
+          - "Requests 30 minutes for Q&A after presentation"
+          - "Notes: 'Meridian Corp case study available as appendix upon request'"
+    builds_on: [s1, s2, s3, s4, s5]
+
+qa_pairs:
+  - question: "What is the company's Q4 2025 ARR?"
+    answer: "$14.2M"
+    evidence_sessions: [s2]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was the year-over-year ARR growth?"
+    answer: "133%, from $6.1M to $14.2M"
+    evidence_sessions: [s2]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How much did infrastructure costs decrease after the Kubernetes migration?"
+    answer: "34%, saving $48K per month"
+    evidence_sessions: [s3]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "Who is the largest new customer and what's the deal size?"
+    answer: "Meridian Corp — $420K ARR, 3-year contract"
+    evidence_sessions: [s4]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What is the top reason customers churn?"
+    answer: "Missing integrations — cited in 28% of exit surveys"
+    evidence_sessions: [s4]
+    type: fact_recall
+    difficulty: detail
+
+  - question: "Why was the executive summary rewritten?"
+    answer: "The CEO wanted it to lead with the Meridian deal and frame the narrative around enterprise momentum for the Series B"
+    evidence_sessions: [s5]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What Series B terms are being targeted?"
+    answer: "$25M raise at $150M pre-money valuation, targeted for Q2 2026"
+    evidence_sessions: [s5]
+    type: artifact_content
+    difficulty: single-hop
+
+  - question: "How did deployment frequency change with Kubernetes?"
+    answer: "Went from 3x/week to 12x/week"
+    evidence_sessions: [s3]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was asked of the board?"
+    answer: "Approval for the Series B process and introductions to 3 target investors: Accel, Bessemer, and IVP"
+    evidence_sessions: [s5]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "How did NPS change from Q3 to Q4?"
+    answer: "Increased from 44 to 52"
+    evidence_sessions: [s3]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What are the three key themes highlighted in the board cover email?"
+    answer: "Enterprise traction, operational efficiency, and Series B readiness"
+    evidence_sessions: [s6]
+    type: communication
+    difficulty: single-hop
+
+  - question: "How many engineers are on the team and what's the hiring plan?"
+    answer: "Currently 23 engineers (hired 5 in Q4, 2 departures). Plan to hire 8 more engineers plus VP Sales and VP Marketing in 2026."
+    evidence_sessions: [s3, s5]
+    type: cross_session
+    difficulty: multi-hop
+
+  - question: "What was the 2026 ARR target and what growth rate does that represent?"
+    answer: "$30M, which is 111% growth from $14.2M"
+    evidence_sessions: [s5]
+    type: fact_recall
+    difficulty: single-hop

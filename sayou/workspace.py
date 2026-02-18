@@ -92,6 +92,10 @@ class Workspace:
             async with self._engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
 
+            # Create FTS5 virtual tables and triggers
+            from sayou.catalog.fts import create_fts_tables
+            await create_fts_tables(self._engine, self._database_url)
+
         # Select storage backend
         has_s3 = bool(self._s3_access_key_id and self._s3_secret_access_key)
         if has_s3:

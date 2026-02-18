@@ -1,0 +1,278 @@
+id: scenario-07
+title: "Design a Data Pipeline for Product Analytics"
+domain: data-engineering
+category: build
+description: >
+  A data engineer builds a product analytics pipeline from scratch.
+  Over 7 sessions across 3 weeks, the agent designs ingestion from
+  multiple sources, transformation logic, a warehouse schema, and
+  a dashboard — iterating through data quality issues along the way.
+total_sessions: 7
+estimated_tokens: 14000
+
+persona:
+  role: "Mid-level data engineer, 4 years experience, background in Python and SQL"
+  communication_style: "methodical and detail-oriented, writes medium-length messages, likes to reason through trade-offs before deciding, uses technical terms precisely"
+  quirks:
+    - "often says 'let me think about this...' then writes a pros/cons list"
+    - "uses 'wrt' (with regard to) and 'afaik' abbreviations"
+    - "corrects themselves mid-message with 'wait no' or 'actually scratch that'"
+  context: "Ride-sharing startup in Sao Paulo, 60-person company, processing 2M+ daily ride events, expanding across Latin America"
+
+sessions:
+  - id: s1
+    day: 1
+    user_request: "We need a product analytics pipeline. Our data is in PostgreSQL (app DB), Stripe (payments), and Segment (events). We want daily dashboards for our CEO showing MRR, DAU, retention, and conversion funnel. What's the architecture?"
+    conversation_topics:
+      - ELT vs ETL for analytics
+      - Warehouse selection
+      - Orchestration tooling
+    decisions:
+      - choice: "ELT architecture with BigQuery as warehouse, dbt for transforms, Airflow for orchestration"
+        reasoning: "ELT lets us load raw data fast and transform in the warehouse. BigQuery is cheapest for our scale (~500GB). dbt gives version-controlled SQL transforms with testing built in. Airflow is already used by the platform team."
+        alternatives_considered: ["Snowflake (more expensive at our scale)", "Redshift (AWS lock-in, we're multi-cloud)", "Fivetran (too expensive for 3 sources)", "Dagster (team doesn't know it)"]
+      - choice: "Medallion architecture: bronze (raw), silver (cleaned), gold (aggregated)"
+        reasoning: "Bronze preserves raw data for debugging. Silver normalizes and joins across sources. Gold tables are dashboard-ready aggregates. This is industry standard and makes lineage clear."
+    artifacts:
+      - type: document
+        description: "Pipeline architecture document"
+        key_facts:
+          - "Sources: PostgreSQL (users, orders, sessions), Stripe (subscriptions, invoices, charges), Segment (page views, clicks, custom events)"
+          - "Ingestion: custom Python extractors for Postgres CDC, Stripe API, Segment webhooks"
+          - "Warehouse: BigQuery, dataset per medallion layer (raw, cleaned, analytics)"
+          - "Transforms: dbt models organized by layer"
+          - "Orchestration: Airflow DAG, daily at 6 AM UTC"
+          - "Dashboard: Metabase connected to gold layer"
+          - "Estimated data volume: ~2M events/day, ~500GB total after 1 year"
+    entities: ["BigQuery", "dbt", "Airflow", "Stripe", "Segment", "PostgreSQL", "Metabase"]
+
+  - id: s2
+    day: 3
+    user_request: "Let's build the ingestion layer. Start with the PostgreSQL extractor."
+    conversation_topics:
+      - Change Data Capture strategies
+      - Incremental vs full load
+    decisions:
+      - choice: "Use logical replication with wal2json for CDC, falling back to timestamp-based incremental"
+        reasoning: "Logical replication captures all changes (inserts, updates, deletes) without polling. wal2json is lightweight. Timestamp-based is the fallback for tables without updated_at columns."
+      - choice: "Extract to newline-delimited JSON, then load to BigQuery via bq load"
+        reasoning: "NDJSON is BigQuery's fastest bulk load format. Avoids CSV escaping issues. Schema auto-detection works well with JSON."
+    artifacts:
+      - type: code
+        description: "PostgreSQL CDC extractor (extractors/postgres_cdc.py)"
+        key_facts:
+          - "Uses psycopg2 logical replication protocol"
+          - "Outputs NDJSON files partitioned by table and date: raw/postgres/{table}/{date}.jsonl"
+          - "Tracks replication slot position in a state file for exactly-once delivery"
+          - "Handles schema changes: new columns auto-detected, dropped columns preserved as null"
+          - "Tables extracted: users, orders, order_items, sessions, subscriptions"
+          - "Incremental fallback uses MAX(updated_at) watermark"
+      - type: code
+        description: "BigQuery loader (loaders/bigquery_loader.py)"
+        key_facts:
+          - "Uses google-cloud-bigquery client with load_table_from_json"
+          - "Write disposition: WRITE_APPEND for incremental, WRITE_TRUNCATE for full"
+          - "Schema auto-detection enabled for bronze layer"
+          - "Partitions tables by _loaded_at date for cost-efficient queries"
+    builds_on: [s1]
+    entities: ["PostgreSQL", "BigQuery", "wal2json"]
+
+  - id: s3
+    day: 7
+    user_request: "Postgres extractor works. Now Stripe. We need subscription data for MRR calculation."
+    conversation_topics:
+      - Stripe API pagination
+      - Handling Stripe's nested objects
+    artifacts:
+      - type: code
+        description: "Stripe extractor (extractors/stripe_extractor.py)"
+        key_facts:
+          - "Extracts: subscriptions, invoices, charges, customers, prices, products"
+          - "Uses Stripe's auto-pagination with stripe.Subscription.list(limit=100)"
+          - "Incremental: filters by created >= last_run_timestamp"
+          - "Flattens nested objects: subscription.items → separate rows with subscription_id FK"
+          - "Handles rate limiting: exponential backoff with max 5 retries"
+          - "Stores raw JSON for each object — no data loss during extraction"
+          - "Subscription status mapping: active, past_due, canceled, trialing, unpaid"
+    builds_on: [s1]
+    entities: ["Stripe"]
+
+  - id: s4
+    day: 10
+    user_request: "Time for the dbt models. Let's start with the MRR calculation — that's the most important metric for the CEO."
+    conversation_topics:
+      - MRR calculation methodology
+      - Handling subscription edge cases
+    decisions:
+      - choice: "Calculate MRR using subscription-level monthly normalization, not invoice-based"
+        reasoning: "Invoice-based MRR is noisy — invoices include one-time charges, prorations, credits. Subscription-level MRR takes each active subscription's plan price and normalizes to monthly: annual plans / 12, quarterly / 3. This matches how SaaS investors expect MRR reported."
+        alternatives_considered: ["Invoice-based MRR", "ARR / 12"]
+      - choice: "Track MRR movements: new, expansion, contraction, churn, reactivation"
+        reasoning: "Net MRR change alone hides the story. Breaking into movements shows if growth is from new customers or expansions, and whether churn is accelerating. Standard SaaS metric decomposition."
+    artifacts:
+      - type: code
+        description: "dbt MRR models"
+        key_facts:
+          - "stg_stripe_subscriptions: cleaned subscriptions with status, plan_amount, interval"
+          - "int_subscription_mrr: normalizes plan amounts to monthly (annual/12, quarterly/3)"
+          - "int_mrr_movements: compares each customer's MRR month-over-month to classify as new/expansion/contraction/churn/reactivation"
+          - "fct_mrr_daily: daily MRR snapshot with running total"
+          - "fct_mrr_movements_monthly: monthly MRR bridge (starting MRR + new + expansion - contraction - churn + reactivation = ending MRR)"
+          - "Handles edge cases: mid-month plan changes use prorated amount, trial subscriptions excluded until conversion"
+          - "dbt tests: assert MRR >= 0, assert movements sum to net change, assert no duplicate subscriptions per customer per month"
+    builds_on: [s1, s3]
+    entities: ["dbt", "Stripe"]
+
+  - id: s5
+    day: 14
+    user_request: "The retention numbers look weird. Week 1 retention is showing 120% for some cohorts. Something's wrong with the data."
+    conversation_topics:
+      - Duplicate event detection
+      - Session definition alignment
+    discoveries:
+      - finding: "Segment is sending duplicate events — same event_id appearing 2-3 times"
+        detail: "Segment's webhook delivery retries on timeout. Our webhook endpoint returns 200 but sometimes takes >5 seconds, causing Segment to retry. ~15% of events are duplicates."
+      - finding: "Session definition mismatch between app DB and analytics"
+        detail: "App DB defines a session as a login-to-logout window. Analytics model defines it as any activity within a 30-minute window. Users who stay logged in for 8 hours show as 1 session in the app but 5+ sessions in analytics. This inflates DAU when counting distinct sessions."
+    decisions:
+      - choice: "Deduplicate using Segment's messageId, define session as 30-min inactivity gap"
+        reasoning: "messageId is Segment's built-in idempotency key. 30-min gap is the GA4/Amplitude standard. We'll document the discrepancy with the app DB's session definition."
+    artifacts:
+      - type: code
+        description: "Data quality fixes in dbt"
+        key_facts:
+          - "Added deduplication in stg_segment_events: ROW_NUMBER() OVER (PARTITION BY message_id ORDER BY received_at) = 1"
+          - "15% of events were duplicates — retention numbers dropped to realistic ~45% week-1"
+          - "Session model: TIMESTAMP_DIFF > 30 minutes between consecutive events = new session"
+          - "Added dbt test: assert no duplicate message_ids in staging"
+          - "Added data quality dashboard showing duplicate rate trend"
+    builds_on: [s1, s4]
+    entities: ["Segment", "dbt"]
+
+  - id: s6
+    day: 17
+    user_request: "Build the remaining gold layer models: DAU, retention cohorts, and conversion funnel."
+    artifacts:
+      - type: code
+        description: "Gold layer analytics models"
+        key_facts:
+          - "fct_dau: daily active users, counted as distinct user_ids with at least 1 event per day"
+          - "fct_retention_cohorts: weekly cohort retention matrix (week 0 through week 12)"
+          - "fct_conversion_funnel: 5-step funnel — visit → signup → onboarding_complete → first_action → paid_conversion"
+          - "Funnel uses 14-day attribution window: conversion counted if step N+1 happens within 14 days of step N"
+          - "All gold models are incremental: only reprocesses last 3 days to handle late-arriving events"
+          - "Retention: cohort defined by signup week, retention measured by any activity in subsequent weeks"
+    builds_on: [s4, s5]
+    entities: ["dbt", "BigQuery"]
+
+  - id: s7
+    day: 20
+    user_request: "Last step — set up the Metabase dashboard and the Airflow DAG to run everything daily."
+    artifacts:
+      - type: code
+        description: "Airflow DAG (dags/analytics_pipeline.py)"
+        key_facts:
+          - "Schedule: daily at 6 AM UTC"
+          - "Task order: extract_postgres → extract_stripe → extract_segment → dbt_run → dbt_test → notify_slack"
+          - "Extractors run in parallel (3 concurrent tasks)"
+          - "dbt_run uses dbt build (run + test in dependency order)"
+          - "Failure notification to #data-alerts Slack channel with error details"
+          - "SLA: pipeline must complete within 2 hours or alert fires"
+          - "Retry policy: 2 retries with 10-minute delay for extractors, 0 retries for dbt (fail fast)"
+      - type: document
+        description: "Metabase dashboard specification"
+        key_facts:
+          - "Dashboard name: CEO Daily Metrics"
+          - "4 sections: Revenue (MRR chart + movements table), Engagement (DAU trend + WAU/MAU), Retention (cohort heatmap), Growth (conversion funnel + signup trend)"
+          - "MRR chart: line chart with MRR trend, target line at $100K"
+          - "Retention heatmap: color-coded weekly cohorts, green >40%, yellow 20-40%, red <20%"
+          - "Conversion funnel: bar chart with drop-off percentages between steps"
+          - "Date filter: default last 30 days, can expand to 90 days or custom range"
+          - "Auto-refresh: every 6 hours"
+    builds_on: [s1, s4, s5, s6]
+    entities: ["Airflow", "Metabase", "Slack"]
+
+qa_pairs:
+  - question: "What warehouse was chosen for the analytics pipeline and why?"
+    answer: "BigQuery, because it was cheapest at the expected scale (~500GB). Snowflake was more expensive, Redshift had AWS lock-in concerns."
+    evidence_sessions: [s1]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What are the three data sources feeding the pipeline?"
+    answer: "PostgreSQL (users, orders, sessions), Stripe (subscriptions, invoices, charges), and Segment (page views, clicks, custom events)"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What is the medallion architecture used in this pipeline?"
+    answer: "Three layers: bronze (raw data), silver (cleaned and normalized), gold (aggregated dashboard-ready metrics)"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How is MRR calculated and why wasn't invoice-based MRR used?"
+    answer: "MRR is calculated at the subscription level by normalizing plan prices to monthly amounts (annual/12, quarterly/3). Invoice-based MRR was rejected because invoices include one-time charges, prorations, and credits which make it noisy."
+    evidence_sessions: [s4]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What MRR movement categories are tracked?"
+    answer: "New, expansion, contraction, churn, and reactivation"
+    evidence_sessions: [s4]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What caused retention numbers to show over 100%?"
+    answer: "Two issues: Segment was sending duplicate events (~15% of events had the same messageId due to webhook retry timeouts), and there was a session definition mismatch between the app DB (login-to-logout) and analytics (30-min inactivity gap) that inflated DAU."
+    evidence_sessions: [s5]
+    type: discovery_recall
+    difficulty: multi-hop
+
+  - question: "How were duplicate Segment events fixed?"
+    answer: "Deduplication using ROW_NUMBER() OVER (PARTITION BY message_id ORDER BY received_at) = 1 in the staging model. This removed ~15% duplicate events."
+    evidence_sessions: [s5]
+    type: artifact_content
+    difficulty: single-hop
+
+  - question: "What is the conversion funnel definition?"
+    answer: "5 steps: visit → signup → onboarding_complete → first_action → paid_conversion, with a 14-day attribution window between steps."
+    evidence_sessions: [s6]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "What is the Airflow DAG schedule and task order?"
+    answer: "Runs daily at 6 AM UTC. Order: extract_postgres, extract_stripe, extract_segment (in parallel) → dbt_run → dbt_test → notify_slack. SLA is 2 hours."
+    evidence_sessions: [s7]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "What CDC strategy is used for PostgreSQL extraction?"
+    answer: "Logical replication with wal2json for CDC, with a fallback to timestamp-based incremental extraction (MAX updated_at watermark) for tables without updated_at columns."
+    evidence_sessions: [s2]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How does the pipeline handle late-arriving events?"
+    answer: "Gold layer models are incremental and reprocess the last 3 days to handle late-arriving events."
+    evidence_sessions: [s6]
+    type: artifact_content
+    difficulty: single-hop
+
+  - question: "What retention metric was found after fixing the data quality issues?"
+    answer: "Week-1 retention dropped from the inflated 120% to a realistic ~45% after deduplicating Segment events."
+    evidence_sessions: [s5]
+    type: discovery_recall
+    difficulty: single-hop
+
+  - question: "What sections does the CEO dashboard contain?"
+    answer: "4 sections: Revenue (MRR chart + movements table), Engagement (DAU trend + WAU/MAU), Retention (cohort heatmap), and Growth (conversion funnel + signup trend)"
+    evidence_sessions: [s7]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "Why was Segment sending duplicate events?"
+    answer: "Segment's webhook delivery retries on timeout. The webhook endpoint returned 200 but sometimes took >5 seconds, causing Segment to retry. This resulted in ~15% duplicate events."
+    evidence_sessions: [s5]
+    type: discovery_recall
+    difficulty: single-hop

@@ -116,6 +116,26 @@ async def get_file_by_path(
     return result.scalar_one_or_none()
 
 
+async def get_file_by_path_including_deleted(
+    session: AsyncSession, org_id: str, workspace_id: str, path: str
+) -> SayouFile | None:
+    """Like get_file_by_path but also returns soft-deleted files.
+
+    Used by the write path to restore (undelete) files that were previously
+    soft-deleted, avoiding UNIQUE constraint violations on re-sync.
+    """
+    result = await session.execute(
+        select(SayouFile).where(
+            and_(
+                SayouFile.org_id == org_id,
+                SayouFile.workspace_id == workspace_id,
+                SayouFile.path == path,
+            )
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def create_file(
     session: AsyncSession,
     org_id: str,
@@ -390,9 +410,100 @@ async def search_files_by_frontmatter(
     return matched
 
 
+async def search_files_fts(
+    session: AsyncSession, org_id: str, workspace_id: str, query: str
+) -> list[SayouFile]:
+    """Search files using FTS5 MATCH with BM25 ranking (SQLite only).
+
+    Tokenizes the query so "password hashing" matches documents containing
+    both words anywhere. Results are ranked by BM25 relevance score.
+
+    Raises an exception if FTS5 tables are not available.
+    """
+    from sqlalchemy import text
+
+    fts_sql = text(
+        "SELECT fts.file_id, fts.rank "
+        "FROM sayou_files_fts fts "
+        "WHERE sayou_files_fts MATCH :query "
+        "AND fts.org_id = :org_id "
+        "AND fts.workspace_id = :ws_id "
+        "ORDER BY fts.rank "
+        "LIMIT 50"
+    )
+    fts_result = await session.execute(
+        fts_sql, {"query": query, "org_id": org_id, "ws_id": workspace_id}
+    )
+    fts_rows = fts_result.all()
+
+    if not fts_rows:
+        return []
+
+    # Fetch the actual SayouFile records in ranked order
+    file_ids = [row[0] for row in fts_rows]
+    result = await session.execute(
+        select(SayouFile).where(
+            and_(
+                SayouFile.id.in_(file_ids),
+                SayouFile.deleted_at.is_(None),
+            )
+        )
+    )
+    file_map = {f.id: f for f in result.scalars().all()}
+    # Preserve FTS5 rank order
+    return [file_map[fid] for fid in file_ids if fid in file_map]
+
+
+async def search_files_mysql_fts(
+    session: AsyncSession, org_id: str, workspace_id: str, query: str
+) -> list[SayouFile]:
+    """Search files using MySQL FULLTEXT MATCH with relevance ranking.
+
+    Uses MATCH ... AGAINST in natural language mode for tokenized search
+    with relevance scoring. Requires ft_files_search FULLTEXT index.
+
+    Raises an exception if FULLTEXT index is not available.
+    """
+    from sqlalchemy import text
+
+    fts_sql = text(
+        "SELECT f.id, "
+        "MATCH(f.path, f.content_text, f.frontmatter) AGAINST(:query IN NATURAL LANGUAGE MODE) AS score "
+        "FROM sayou_files f "
+        "WHERE f.org_id = :org_id "
+        "AND f.workspace_id = :ws_id "
+        "AND f.deleted_at IS NULL "
+        "AND MATCH(f.path, f.content_text, f.frontmatter) AGAINST(:query IN NATURAL LANGUAGE MODE) "
+        "ORDER BY score DESC "
+        "LIMIT 50"
+    )
+    fts_result = await session.execute(
+        fts_sql, {"query": query, "org_id": org_id, "ws_id": workspace_id}
+    )
+    fts_rows = fts_result.all()
+
+    if not fts_rows:
+        return []
+
+    # Fetch the actual SayouFile records in ranked order
+    file_ids = [row[0] for row in fts_rows]
+    result = await session.execute(
+        select(SayouFile).where(
+            and_(
+                SayouFile.id.in_(file_ids),
+                SayouFile.deleted_at.is_(None),
+            )
+        )
+    )
+    file_map = {f.id: f for f in result.scalars().all()}
+    # Preserve relevance order
+    return [file_map[fid] for fid in file_ids if fid in file_map]
+
+
 async def search_files_fulltext(
     session: AsyncSession, org_id: str, workspace_id: str, query: str
 ) -> list[SayouFile]:
+    """Fallback search using LIKE (no ranking, works on all databases)."""
     pattern = f"%{query}%"
     result = await session.execute(
         select(SayouFile).where(

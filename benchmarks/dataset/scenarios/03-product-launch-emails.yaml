@@ -1,0 +1,264 @@
+id: scenario-03
+title: "Draft a Product Launch Email Sequence"
+domain: marketing
+category: communicate
+description: >
+  A marketing manager prepares an email campaign for a new feature launch.
+  Over 6 sessions, the agent drafts a 4-email sequence, iterates on copy
+  based on feedback, sets up A/B tests, and reviews early send metrics.
+total_sessions: 6
+estimated_tokens: 11000
+
+persona:
+  role: "Marketing manager, 6 years experience, ex-agency"
+  communication_style: "energetic but professional, uses bullet points in messages, tends to give context before asking questions, mixes strategic thinking with tactical requests"
+  quirks:
+    - "uses marketing jargon naturally (CTR, CTA, above-the-fold, drip sequence)"
+    - "occasionally types 'v' instead of 'very' and 'w/' instead of 'with'"
+    - "sometimes adds 'cc @name' references to absent team members out of habit"
+  context: "E-commerce platform in Berlin, 200-person company, selling to SMB retailers across EU, recently raised Series C"
+
+sessions:
+  - id: s1
+    day: 1
+    user_request: "We're launching our new AI assistant feature on Feb 28. I need a 4-email sequence: teaser, announcement, tutorial, and follow-up. Our list is 42,000 subscribers."
+    conversation_topics:
+      - Email sequence strategy and timing
+      - Audience segmentation approach
+      - Tone and brand voice guidelines
+    decisions:
+      - choice: "Send sequence over 10 days: teaser (day -3), announcement (day 0), tutorial (day +3), follow-up (day +7)"
+        reasoning: "3-day gaps prevent fatigue. Teaser builds anticipation. Tutorial gives time to try the feature before the follow-up nudge."
+      - choice: "Segment into 3 groups: power users (8K), regular users (26K), dormant users (8K)"
+        reasoning: "Power users get early access teaser. Regular users get standard sequence. Dormant users get re-engagement angle."
+    artifacts:
+      - type: document
+        description: "Email sequence plan"
+        key_facts:
+          - "4 emails over 10 days"
+          - "Email 1 (teaser): Feb 25 — 'Something big is coming'"
+          - "Email 2 (announcement): Feb 28 — 'Meet your AI assistant'"
+          - "Email 3 (tutorial): Mar 3 — 'Get the most out of your AI assistant'"
+          - "Email 4 (follow-up): Mar 7 — 'You haven't tried it yet' (non-users only)"
+          - "3 audience segments: power (8K), regular (26K), dormant (8K)"
+    entities: ["Mailchimp", "AI assistant feature"]
+
+  - id: s2
+    day: 2
+    user_request: "Draft the teaser email and the announcement email."
+    artifacts:
+      - type: email
+        description: "Email 1: Teaser"
+        key_facts:
+          - "Subject line: 'Your workflow is about to change (Feb 28)'"
+          - "Preview text: 'We've been building something for 6 months. Almost ready.'"
+          - "Body: 120 words, no feature details, countdown visual"
+          - "CTA: 'Get notified first' → links to waitlist page"
+          - "Power user variant: includes 'As one of our most active users, you get early access on Feb 26'"
+      - type: email
+        description: "Email 2: Announcement"
+        key_facts:
+          - "Subject line: 'It's here: AI Assistant — your new superpower'"
+          - "Preview text: 'Automate repetitive tasks in 2 clicks.'"
+          - "Body: 250 words, 3 key benefits with icons, product screenshot"
+          - "Benefit 1: 'Automate repetitive tasks — save 4 hours/week'"
+          - "Benefit 2: 'Smart suggestions based on your workflow patterns'"
+          - "Benefit 3: 'Works inside your existing tools — no context switching'"
+          - "CTA: 'Try it now — free for 14 days' → links to feature page"
+          - "Dormant user variant: adds 'We've missed you. Come back and try our biggest update yet.'"
+    builds_on: [s1]
+
+  - id: s3
+    day: 4
+    user_request: "The VP of Marketing wants the announcement to be shorter and wants us to A/B test two subject lines. Also draft the tutorial email."
+    conversation_topics:
+      - VP feedback on announcement length
+      - A/B test design for subject lines
+    decisions:
+      - choice: "A/B test with 10% of list (4,200 subscribers), 4-hour measurement window"
+        reasoning: "10% gives 2,100 per variant — enough for statistical significance on open rates. 4 hours captures most opens."
+    artifacts:
+      - type: email
+        description: "Revised announcement email (shorter)"
+        key_facts:
+          - "Body reduced from 250 to 180 words"
+          - "Removed detailed benefit descriptions, replaced with bullet points"
+          - "Added customer quote from beta tester: 'Saved me 5 hours last week' — Jamie K, Product Manager"
+      - type: document
+        description: "A/B test plan"
+        key_facts:
+          - "Subject A: 'It's here: AI Assistant — your new superpower'"
+          - "Subject B: 'You asked, we built it: meet AI Assistant'"
+          - "Test group: 10% of list (2,100 per variant)"
+          - "Winner metric: open rate after 4 hours"
+          - "Winner goes to remaining 90%"
+      - type: email
+        description: "Email 3: Tutorial"
+        key_facts:
+          - "Subject: '3 ways to use AI Assistant (5 min read)'"
+          - "Body: 300 words, 3 use cases with step-by-step instructions"
+          - "Use case 1: Auto-generate weekly reports from your dashboard"
+          - "Use case 2: Set up smart notifications for anomaly detection"
+          - "Use case 3: Create custom workflows with natural language"
+          - "Includes 30-second GIF walkthrough for each use case"
+          - "CTA: 'Try your first workflow' → deep link into product"
+    builds_on: [s1, s2]
+
+  - id: s4
+    day: 6
+    user_request: "Draft the follow-up email. This only goes to people who haven't activated the feature yet."
+    artifacts:
+      - type: email
+        description: "Email 4: Follow-up (non-users only)"
+        key_facts:
+          - "Subject: 'Need help getting started with AI Assistant?'"
+          - "Body: 150 words, empathetic tone"
+          - "Acknowledges that trying new features takes time"
+          - "Offers 3 options: 1-on-1 demo booking link, help center article, reply to email for personal help"
+          - "Includes social proof: '2,847 teams activated AI Assistant this week'"
+          - "CTA: 'Book a 15-min demo' → Calendly link"
+          - "Only sent to subscribers who haven't triggered the 'ai_assistant_activated' event"
+    builds_on: [s1, s2, s3]
+
+  - id: s5
+    day: 11
+    user_request: "The teaser went out. Here are the results. How did we do?"
+    conversation_topics:
+      - Analyzing teaser email performance
+      - Comparing to historical benchmarks
+    artifacts:
+      - type: data
+        description: "Teaser email performance metrics"
+        key_facts:
+          - "Overall open rate: 34.2% (benchmark: 28%)"
+          - "Click rate: 8.7% (benchmark: 4.5%)"
+          - "Power user segment open rate: 51.3%"
+          - "Regular user segment open rate: 32.1%"
+          - "Dormant user segment open rate: 18.4%"
+          - "Unsubscribes: 23 (0.05% — well below 0.2% threshold)"
+          - "Waitlist signups: 1,847 from 42,000 sends"
+    builds_on: [s1, s2]
+
+  - id: s6
+    day: 14
+    user_request: "Announcement went out yesterday. Share the A/B test results and overall performance."
+    artifacts:
+      - type: data
+        description: "Announcement email performance + A/B results"
+        key_facts:
+          - "A/B test winner: Subject B ('You asked, we built it') — 38.1% open rate vs Subject A 31.4%"
+          - "Subject B rolled out to remaining 90% of list"
+          - "Overall announcement open rate: 37.5%"
+          - "Click-through rate: 12.3%"
+          - "Feature activations from email: 3,412 (8.1% of list)"
+          - "Power users: 62% activated within 24 hours"
+          - "Revenue impact: 147 free-to-pro upgrades attributed to launch emails ($22,050 MRR)"
+    builds_on: [s1, s2, s3, s4, s5]
+    entities: ["Mailchimp"]
+
+qa_pairs:
+  - question: "How many subscribers are on the email list?"
+    answer: "42,000"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What are the three audience segments and their sizes?"
+    answer: "Power users (8K), regular users (26K), dormant users (8K)"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: detail
+
+  - question: "What subject line won the A/B test?"
+    answer: "'You asked, we built it: meet AI Assistant' — 38.1% open rate vs 31.4% for the other variant"
+    evidence_sessions: [s6]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "Why were the emails spaced 3 days apart?"
+    answer: "To prevent fatigue, build anticipation with the teaser, and give users time to try the feature before the follow-up"
+    evidence_sessions: [s1]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "How was the A/B test sample size determined?"
+    answer: "10% of list (4,200 subscribers, 2,100 per variant) — enough for statistical significance on open rates, with a 4-hour measurement window"
+    evidence_sessions: [s3]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What was the customer quote used in the announcement email?"
+    answer: "'Saved me 5 hours last week' — Jamie K, Product Manager"
+    evidence_sessions: [s3]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "What three use cases are covered in the tutorial email?"
+    answer: "Auto-generate weekly reports, set up smart notifications for anomaly detection, create custom workflows with natural language"
+    evidence_sessions: [s3]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "Who gets the follow-up email?"
+    answer: "Only subscribers who haven't triggered the 'ai_assistant_activated' event — people who haven't tried the feature yet"
+    evidence_sessions: [s4]
+    type: artifact_content
+    difficulty: single-hop
+
+  - question: "How did the teaser email perform compared to benchmarks?"
+    answer: "Open rate 34.2% vs 28% benchmark, click rate 8.7% vs 4.5% benchmark — significantly above benchmarks"
+    evidence_sessions: [s5]
+    type: discovery_recall
+    difficulty: single-hop
+
+  - question: "How many users activated the AI assistant feature from the announcement email?"
+    answer: "3,412 users (8.1% of the list)"
+    evidence_sessions: [s6]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How did power users respond compared to dormant users across the campaign?"
+    answer: "Power users had 51.3% teaser open rate and 62% activated within 24 hours. Dormant users had 18.4% teaser open rate."
+    evidence_sessions: [s5, s6]
+    type: cross_session
+    difficulty: multi-hop
+
+  - question: "What revenue impact did the launch emails generate?"
+    answer: "147 free-to-pro upgrades, $22,050 in MRR"
+    evidence_sessions: [s6]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What changed about the announcement email after VP feedback?"
+    answer: "Body shortened from 250 to 180 words, detailed benefit descriptions replaced with bullet points, and a beta tester quote was added"
+    evidence_sessions: [s2, s3]
+    type: cross_session
+    difficulty: multi-hop
+
+  # Task evaluation
+  - question: "Draft a follow-up email for dormant users who haven't tried the AI assistant yet"
+    answer: "Context should include all required evidence items"
+    type: task
+    difficulty: multi-hop
+    evidence_sessions: [s1, s2, s3]
+    required_evidence:
+      - "dormant segment size (8,000 users)"
+      - "AI assistant feature launched on Feb 28"
+      - "brand voice: energetic but professional"
+      - "14-day trial offer CTA from announcement email"
+      - "dormant user variant: 'We've missed you. Come back and try our biggest update yet.'"
+      - "open rate of teaser for dormant segment (18.4%)"
+
+  - question: "Write a campaign performance summary for the VP of Marketing covering all emails sent so far"
+    answer: "Context should include all required evidence items"
+    type: task
+    difficulty: multi-hop
+    evidence_sessions: [s1, s2, s3, s5, s6]
+    required_evidence:
+      - "4-email sequence over 10 days"
+      - "3 audience segments: power (8K), regular (26K), dormant (8K)"
+      - "teaser open rate: 34.2% vs 28% benchmark"
+      - "A/B test winner: Subject B at 38.1% vs Subject A at 31.4%"
+      - "feature activations from email: 3,412 (8.1% of list)"
+      - "revenue impact: 147 free-to-pro upgrades ($22,050 MRR)"
+      - "power users: 62% activated within 24 hours"

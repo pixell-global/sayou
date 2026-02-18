@@ -42,6 +42,12 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# MCP config (contains API keys)
+.mcp.json
+
+# SQLite databases
+*.db
+
 # Example data (persistent SQLite + storage blobs)
 examples/.data/
 

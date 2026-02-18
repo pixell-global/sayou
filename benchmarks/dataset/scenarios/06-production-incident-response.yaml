@@ -1,0 +1,224 @@
+id: scenario-06
+title: "Handle a Production Database Outage"
+domain: operations
+category: operate
+description: >
+  An on-call engineer responds to a production database outage at 2 AM.
+  Over 5 sessions across 3 days, the agent helps diagnose the root cause,
+  implement a fix, write a post-mortem, and create prevention measures.
+total_sessions: 5
+estimated_tokens: 11000
+
+persona:
+  role: "Staff engineer, 10 years experience, on-call rotation lead"
+  communication_style: "terse under pressure (2 AM), becomes more verbose and reflective in daytime sessions, uses sentence fragments during incident, full paragraphs during post-mortem"
+  quirks:
+    - "pastes raw CLI output and log snippets directly into messages"
+    - "uses 'fwiw' and 'iirc' frequently"
+    - "during the incident (session 1) skips capitalization and punctuation entirely"
+  context: "Logistics platform in Sydney, 80-person eng team, handles real-time delivery tracking for 50K+ daily shipments across Australia/NZ"
+
+sessions:
+  - id: s1
+    day: 1
+    time: "2:15 AM"
+    user_request: "PagerDuty alert — database connections maxed out, API returning 503s. Help me triage this NOW."
+    conversation_topics:
+      - Connection pool exhaustion diagnosis
+      - Immediate mitigation steps
+      - Monitoring dashboard readings
+    discoveries:
+      - finding: "PostgreSQL max_connections hit 100/100"
+        detail: "All 100 connections consumed. pg_stat_activity shows 73 connections in 'idle in transaction' state, mostly from the order-service. Oldest idle transaction is 47 minutes old."
+      - finding: "order-service deployed 2 hours ago (v2.14.0)"
+        detail: "Deployment at 11:58 PM included a new bulk order export feature. The export endpoint opens a transaction, streams CSV rows, but doesn't close the transaction if the client disconnects mid-stream."
+      - finding: "No connection timeout configured"
+        detail: "pgbouncer is not in use. Application connects directly to PostgreSQL. idle_in_transaction_session_timeout is set to 0 (disabled)."
+    decisions:
+      - choice: "Immediately kill idle-in-transaction connections older than 5 minutes"
+        reasoning: "73 of 100 connections are idle in transaction. Killing them restores capacity immediately. Risk is low — these transactions are already stale and will fail on next query anyway."
+      - choice: "Roll back order-service to v2.13.1"
+        reasoning: "The bulk export bug is the root cause. Rolling back removes the leak source while we fix the code."
+    artifacts:
+      - type: code
+        description: "Emergency SQL to kill idle connections"
+        key_facts:
+          - "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle in transaction' AND state_change < now() - interval '5 minutes'"
+          - "Freed 68 connections immediately"
+          - "API recovered within 30 seconds of running the query"
+      - type: document
+        description: "Incident timeline (real-time notes)"
+        key_facts:
+          - "2:00 AM — PagerDuty alert fires"
+          - "2:15 AM — Engineer engages, confirms 503s from API"
+          - "2:22 AM — Root cause identified: idle-in-transaction leak from order-service v2.14.0"
+          - "2:25 AM — Emergency connection kill executed, API recovers"
+          - "2:35 AM — order-service rolled back to v2.13.1"
+          - "2:45 AM — Monitoring confirms stable, no new connection leaks"
+          - "Impact: 45 minutes of degraded service, ~120 failed API requests"
+    entities: ["PostgreSQL", "order-service", "PagerDuty", "v2.14.0"]
+
+  - id: s2
+    day: 1
+    time: "10:00 AM"
+    user_request: "Now that things are stable, let's fix the actual bug in the bulk export code."
+    conversation_topics:
+      - Transaction management in streaming responses
+      - Connection lifecycle best practices
+    decisions:
+      - choice: "Use a context manager with explicit transaction scope, and catch client disconnect"
+        reasoning: "The bug was that the transaction opened at the start of the stream but never closed on client disconnect. A context manager with try/finally ensures cleanup. FastAPI's disconnect detection via Request.is_disconnected() handles early client close."
+    artifacts:
+      - type: code
+        description: "Fixed bulk export endpoint"
+        key_facts:
+          - "Wrapped DB query in async context manager: async with db.begin() as txn"
+          - "Added try/finally to close transaction on any exit"
+          - "Added Request.is_disconnected() check every 100 rows"
+          - "Added statement_timeout of 300 seconds per query to prevent runaway transactions"
+          - "Added connection pool with max_overflow=10 and pool_timeout=30"
+      - type: code
+        description: "Test for client disconnect scenario"
+        key_facts:
+          - "Simulates client disconnect mid-stream using httpx"
+          - "Verifies transaction is closed within 5 seconds of disconnect"
+          - "Verifies connection is returned to pool"
+    builds_on: [s1]
+    entities: ["FastAPI", "SQLAlchemy", "httpx"]
+
+  - id: s3
+    day: 2
+    user_request: "Write the post-mortem for this incident. We need to present it at the weekly engineering meeting."
+    conversation_topics:
+      - Incident severity classification
+      - Action items and ownership
+    artifacts:
+      - type: document
+        description: "Post-mortem document"
+        key_facts:
+          - "Title: INC-2026-0217 — Database Connection Pool Exhaustion"
+          - "Severity: SEV-2 (service degraded, not fully down)"
+          - "Duration: 45 minutes (2:00 AM — 2:45 AM UTC)"
+          - "Impact: ~120 failed API requests, 0 data loss, 3 customers received 503 errors"
+          - "Root cause: Bulk export endpoint in order-service v2.14.0 opened transactions without cleanup on client disconnect"
+          - "Detection: PagerDuty alert on connection count > 90"
+          - "Resolution: Killed stale connections, rolled back to v2.13.1"
+          - "Contributing factors: No connection pooler (pgbouncer), no idle transaction timeout, no integration test for disconnect scenario"
+          - "5 action items with owners and due dates"
+    builds_on: [s1, s2]
+
+  - id: s4
+    day: 2
+    user_request: "Let's implement the preventive measures from the post-mortem. Start with the database safeguards."
+    conversation_topics:
+      - pgbouncer configuration
+      - PostgreSQL timeout settings
+      - Alerting thresholds
+    decisions:
+      - choice: "Deploy pgbouncer in transaction pooling mode with pool_size=20 per service"
+        reasoning: "Transaction pooling releases connections back to the pool at transaction end, preventing any single service from hoarding connections. pool_size=20 per service means max 60 connections to PostgreSQL (3 services × 20), leaving 40 for admin/monitoring."
+      - choice: "Set idle_in_transaction_session_timeout to 60 seconds"
+        reasoning: "Any transaction idle for over 60 seconds is likely leaked. 60s is generous — normal transactions complete in under 1 second. This acts as a safety net."
+    artifacts:
+      - type: code
+        description: "pgbouncer configuration and PostgreSQL settings"
+        key_facts:
+          - "pgbouncer: pool_mode = transaction, default_pool_size = 20, max_client_conn = 200"
+          - "PostgreSQL: idle_in_transaction_session_timeout = 60000 (60 seconds)"
+          - "PostgreSQL: max_connections increased from 100 to 150"
+          - "Alert thresholds: warn at 70% connection usage, page at 85%"
+          - "New Grafana dashboard panel showing connection pool utilization by service"
+      - type: code
+        description: "Terraform changes for pgbouncer ECS service"
+        key_facts:
+          - "pgbouncer runs as sidecar container in each service's task definition"
+          - "Health check on pgbouncer admin port (6432)"
+          - "Memory allocation: 128MB per pgbouncer sidecar"
+    builds_on: [s3]
+    entities: ["pgbouncer", "Grafana", "Terraform", "ECS"]
+
+  - id: s5
+    day: 3
+    user_request: "Send an update to the engineering team about what happened and what we've done to prevent it."
+    conversation_topics:
+      - Blameless incident communication
+      - Technical summary for mixed audience
+    artifacts:
+      - type: document
+        description: "Engineering team incident update email"
+        key_facts:
+          - "Subject: [INC-2026-0217] Post-mortem complete — database connection exhaustion"
+          - "Tone: blameless, focuses on systemic improvements not individual fault"
+          - "Summary: bulk export bug leaked DB connections, caused 45-min degradation"
+          - "Fixes deployed: code fix (context manager + disconnect detection), pgbouncer, idle timeout"
+          - "New safeguards: connection pooling, automatic timeout, improved alerting"
+          - "Links to full post-mortem, Grafana dashboard, and pgbouncer runbook"
+          - "Call to action: review your service's connection handling patterns"
+    builds_on: [s1, s2, s3, s4]
+
+qa_pairs:
+  - question: "What caused the production database outage?"
+    answer: "The bulk export endpoint in order-service v2.14.0 opened database transactions but didn't close them when clients disconnected mid-stream, causing 73 of 100 connections to be stuck in 'idle in transaction' state."
+    evidence_sessions: [s1]
+    type: discovery_recall
+    difficulty: multi-hop
+
+  - question: "How many database connections were idle in transaction during the outage?"
+    answer: "73 out of 100 total connections"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was the immediate fix to restore the API?"
+    answer: "Killed all idle-in-transaction connections older than 5 minutes using pg_terminate_backend, which freed 68 connections and restored the API within 30 seconds."
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How was the bulk export bug fixed in code?"
+    answer: "Wrapped the DB query in an async context manager (async with db.begin()), added try/finally for cleanup, added Request.is_disconnected() check every 100 rows, and added a 300-second statement_timeout."
+    evidence_sessions: [s2]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "What was the incident severity and total impact?"
+    answer: "SEV-2 (service degraded, not fully down). 45 minutes duration, ~120 failed API requests, 0 data loss, 3 customers received 503 errors."
+    evidence_sessions: [s3]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "Why was pgbouncer configured with pool_size=20 per service?"
+    answer: "Transaction pooling with pool_size=20 per service means max 60 connections to PostgreSQL (3 services × 20), leaving 40 of the 150 max connections for admin and monitoring."
+    evidence_sessions: [s4]
+    type: decision_reasoning
+    difficulty: multi-hop
+
+  - question: "What idle transaction timeout was set and why?"
+    answer: "60 seconds. Normal transactions complete in under 1 second, so anything idle for over 60 seconds is likely leaked. It acts as a safety net."
+    evidence_sessions: [s4]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What three preventive measures were implemented after the incident?"
+    answer: "1) pgbouncer connection pooling (transaction mode, pool_size=20/service), 2) idle_in_transaction_session_timeout set to 60 seconds, 3) improved alerting (warn at 70% connection usage, page at 85%)"
+    evidence_sessions: [s4]
+    type: cross_session
+    difficulty: multi-hop
+
+  - question: "What version of order-service introduced the bug and what version was it rolled back to?"
+    answer: "The bug was in v2.14.0, rolled back to v2.13.1"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How long was the total incident from alert to resolution?"
+    answer: "45 minutes — PagerDuty alert at 2:00 AM, monitoring confirmed stable at 2:45 AM"
+    evidence_sessions: [s1]
+    type: temporal
+    difficulty: single-hop
+
+  - question: "What was the detection mechanism and what new alerting was added?"
+    answer: "Detection: PagerDuty alert triggered when connection count exceeded 90. New alerting: warn at 70% connection usage, page at 85%, plus a new Grafana dashboard panel showing connection pool utilization by service."
+    evidence_sessions: [s1, s4]
+    type: cross_session
+    difficulty: multi-hop

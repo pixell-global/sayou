@@ -1,0 +1,209 @@
+id: scenario-05
+title: "Set Up CI/CD Pipeline for a Monorepo"
+domain: devops
+category: operate
+description: >
+  A platform engineer sets up CI/CD for a monorepo containing 3 services
+  (API, web frontend, worker). Over 6 sessions, the agent configures
+  GitHub Actions, Docker builds, environment management, and monitoring.
+total_sessions: 6
+estimated_tokens: 12000
+
+persona:
+  role: "Junior platform engineer, 1.5 years experience, self-taught"
+  communication_style: "casual and curious, asks 'why' a lot, admits when confused, messages are short and sometimes fragmented"
+  quirks:
+    - "uses emoji occasionally (thumbs up, thinking face) in technical discussions"
+    - "says 'ngl' (not gonna lie) and 'nvm' when self-correcting"
+    - "sometimes asks the same thing two different ways because they're unsure how to phrase it"
+  context: "EdTech startup in Nairobi, 15-person company, building an online learning platform for K-12 schools across East Africa"
+
+sessions:
+  - id: s1
+    day: 1
+    user_request: "We have a monorepo with 3 services: api/ (Python/FastAPI), web/ (Next.js), and worker/ (Python/Celery). I need CI/CD with GitHub Actions. Only changed services should build."
+    conversation_topics:
+      - Monorepo CI strategy
+      - Change detection for selective builds
+      - Environment strategy
+    decisions:
+      - choice: "Path-based triggering with dorny/paths-filter action"
+        reasoning: "Native GitHub path filters only work on push, not on PRs. dorny/paths-filter works on both and supports mapping paths to named outputs."
+        alternatives_considered: ["nx affected", "turborepo", "custom bash diff script"]
+      - choice: "Three environments: dev (auto-deploy from main), staging (manual trigger), prod (require approval)"
+        reasoning: "Dev auto-deploys for fast iteration. Staging is for QA before production. Prod requires team lead approval to prevent accidental deploys."
+    artifacts:
+      - type: code
+        description: "GitHub Actions workflow (.github/workflows/ci.yml)"
+        key_facts:
+          - "Triggered on push to main and pull requests"
+          - "Uses dorny/paths-filter@v3 for change detection"
+          - "3 parallel job groups: api, web, worker"
+          - "Each job runs only if its directory changed"
+          - "Shared steps: lint, test, build Docker image, push to ECR"
+      - type: document
+        description: "Environment strategy document"
+        key_facts:
+          - "dev: auto-deploy from main, runs on t3.medium"
+          - "staging: manual dispatch, mirrors prod config, runs on t3.large"
+          - "prod: requires approval from @platform-team, runs on t3.xlarge"
+          - "All environments use ECS Fargate"
+          - "Secrets stored in AWS SSM Parameter Store, scoped by environment"
+    entities: ["GitHub Actions", "AWS ECR", "ECS Fargate", "dorny/paths-filter"]
+
+  - id: s2
+    day: 3
+    user_request: "Set up Docker builds. The API and worker share a common Python library in lib/shared/."
+    conversation_topics:
+      - Multi-stage Docker builds
+      - Shared library handling in monorepo
+    decisions:
+      - choice: "Docker build context at repo root, with service-specific Dockerfiles"
+        reasoning: "Setting context to repo root allows COPY lib/shared/ to work without symlinks. Each service has its own Dockerfile but shares the same build context."
+    artifacts:
+      - type: code
+        description: "Dockerfiles for each service"
+        key_facts:
+          - "api/Dockerfile: multi-stage, Python 3.11-slim, copies lib/shared/ first for layer caching"
+          - "web/Dockerfile: multi-stage, node:20-alpine, build stage + nginx serve stage"
+          - "worker/Dockerfile: based on api/Dockerfile with different entrypoint (celery worker)"
+          - "All images tagged with git SHA and 'latest'"
+          - "Final API image size: ~180MB (down from 1.2GB with naive build)"
+          - "Final web image size: ~45MB (nginx + static files)"
+    builds_on: [s1]
+    entities: ["Docker", "ECR"]
+
+  - id: s3
+    day: 5
+    user_request: "Tests are slow. The API test suite takes 8 minutes. Can we speed up CI?"
+    conversation_topics:
+      - Parallelizing tests
+      - Caching strategies
+    discoveries:
+      - finding: "API tests run all 340 tests sequentially"
+        detail: "No test parallelization. Using pytest without any workers. DB setup runs before every test (no shared fixtures)."
+      - finding: "pip install runs every CI job despite unchanged requirements"
+        detail: "No dependency caching. pip install takes 1.5 minutes each run."
+    decisions:
+      - choice: "pytest-xdist with 4 workers + pip cache + Docker layer caching"
+        reasoning: "xdist splits tests across workers automatically. pip cache via actions/cache saves 1.5min. Docker layer caching with buildx saves 2-3min on rebuilds."
+    artifacts:
+      - type: code
+        description: "Optimized CI workflow"
+        key_facts:
+          - "API tests: 8 min → 2.5 min with pytest-xdist -n 4"
+          - "Dependency caching: actions/cache for pip (~1.5 min saved)"
+          - "Docker layer caching: docker/build-push-action with cache-to gha"
+          - "Total CI time: 14 min → 5 min for full pipeline"
+          - "PR checks: 3 min average (only changed services)"
+    builds_on: [s1, s2]
+
+  - id: s4
+    day: 8
+    user_request: "Set up the deployment step. We use ECS Fargate."
+    artifacts:
+      - type: code
+        description: "Deployment workflow (.github/workflows/deploy.yml)"
+        key_facts:
+          - "Uses aws-actions/amazon-ecs-deploy-task-definition@v2"
+          - "Task definitions stored as JSON in deploy/task-defs/"
+          - "Each service has its own ECS service and target group"
+          - "Health check: /health endpoint, 30s interval, 3 unhealthy threshold"
+          - "Rolling deployment: min 50% healthy, max 200%"
+          - "Automatic rollback if health check fails for 5 minutes"
+          - "Deployment notifications sent to #deploys Slack channel via webhook"
+    builds_on: [s1, s2, s3]
+    entities: ["ECS Fargate", "Slack"]
+
+  - id: s5
+    day: 10
+    user_request: "First real deploy went out but the worker service crashed. What happened?"
+    discoveries:
+      - finding: "Celery worker OOM killed — memory limit too low"
+        detail: "Task definition set worker memory to 512MB. Celery with 4 prefork workers each consuming ~200MB. Under load, total exceeded 512MB. ECS killed the container."
+      - finding: "Health check endpoint missing on worker"
+        detail: "Worker container had no HTTP server, so ECS health check (which hits /health via HTTP) always failed. Worker was marked unhealthy even when running fine."
+    artifacts:
+      - type: code
+        description: "Worker fixes"
+        key_facts:
+          - "Increased worker memory from 512MB to 1024MB"
+          - "Reduced Celery prefork workers from 4 to 2 (each gets ~400MB headroom)"
+          - "Added lightweight Flask health endpoint on port 8080 for ECS health checks"
+          - "Added memory monitoring: Celery worker logs memory usage every 60s"
+    builds_on: [s4]
+
+  - id: s6
+    day: 12
+    user_request: "Everything is stable now. Can you document the whole CI/CD setup so other engineers can maintain it?"
+    artifacts:
+      - type: document
+        description: "CI/CD documentation (docs/cicd.md)"
+        key_facts:
+          - "Covers: architecture overview, workflows, environments, secrets, troubleshooting"
+          - "Includes diagram of pipeline stages: lint → test → build → push → deploy"
+          - "Documents all environment variables and where they're stored (SSM)"
+          - "Troubleshooting section covers: failed deploys, OOM kills, slow CI, cache misses"
+          - "Runbook for manual rollback: aws ecs update-service --force-new-deployment with previous task def"
+    builds_on: [s1, s2, s3, s4, s5]
+
+qa_pairs:
+  - question: "What tool is used for monorepo change detection in CI?"
+    answer: "dorny/paths-filter@v3"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "Why wasn't nx or turborepo used for change detection?"
+    answer: "dorny/paths-filter was chosen because native GitHub path filters only work on push (not PRs), and paths-filter works on both and maps paths to named outputs. nx and turborepo were considered but paths-filter was simpler for this use case."
+    evidence_sessions: [s1]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What are the three deployment environments and their trigger mechanisms?"
+    answer: "Dev auto-deploys from main, staging requires manual dispatch, prod requires approval from @platform-team"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: detail
+
+  - question: "How large is the final API Docker image?"
+    answer: "~180MB, down from 1.2GB with a naive build"
+    evidence_sessions: [s2]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How much did CI pipeline time improve?"
+    answer: "From 14 minutes to 5 minutes for the full pipeline, and PR checks average 3 minutes"
+    evidence_sessions: [s3]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "Why did the worker service crash on the first deploy?"
+    answer: "Two issues: memory limit was 512MB but 4 Celery workers consumed ~200MB each exceeding the limit (OOM kill), and the worker had no HTTP health endpoint so ECS always marked it unhealthy."
+    evidence_sessions: [s5]
+    type: discovery_recall
+    difficulty: multi-hop
+
+  - question: "What is the rollback procedure for a failed deployment?"
+    answer: "Run aws ecs update-service --force-new-deployment with the previous task definition"
+    evidence_sessions: [s6]
+    type: artifact_content
+    difficulty: single-hop
+
+  - question: "Where are secrets stored and how are they scoped?"
+    answer: "AWS SSM Parameter Store, scoped by environment"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was done to fix the worker memory issue?"
+    answer: "Increased memory from 512MB to 1024MB and reduced Celery prefork workers from 4 to 2, giving each ~400MB headroom"
+    evidence_sessions: [s5]
+    type: discovery_recall
+    difficulty: single-hop
+
+  - question: "How does the deployment handle failures?"
+    answer: "Rolling deployment with min 50% healthy, max 200%. Automatic rollback if health check fails for 5 minutes. Notifications sent to #deploys Slack channel."
+    evidence_sessions: [s4]
+    type: artifact_content
+    difficulty: detail

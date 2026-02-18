@@ -25,6 +25,10 @@ class AgentSettings(BaseSettings):
     # E2B Sandbox (optional)
     e2b_api_key: str = ""
 
+    # Observer (post-session conversation extraction)
+    observer_enabled: bool = True
+    observer_model: str = "gpt-4o-mini"
+
     @property
     def tavily_enabled(self) -> bool:
         return bool(self.tavily_api_key)
@@ -32,6 +36,10 @@ class AgentSettings(BaseSettings):
     @property
     def sandbox_enabled(self) -> bool:
         return bool(self.e2b_api_key)
+
+    @property
+    def observer_available(self) -> bool:
+        return self.observer_enabled and bool(self.openai_api_key)
 
 
 @lru_cache

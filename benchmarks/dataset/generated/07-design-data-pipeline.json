@@ -1,0 +1,391 @@
+{
+  "scenario_id": "scenario-07",
+  "title": "Design a Data Pipeline for Product Analytics",
+  "domain": "data-engineering",
+  "category": "build",
+  "description": "A data engineer builds a product analytics pipeline from scratch. Over 7 sessions across 3 weeks, the agent designs ingestion from multiple sources, transformation logic, a warehouse schema, and a dashboard — iterating through data quality issues along the way.\n",
+  "sessions": [
+    {
+      "id": "s1",
+      "day": 1,
+      "time": null,
+      "user_request": "We need a product analytics pipeline. Our data is in PostgreSQL (app DB), Stripe (payments), and Segment (events). We want daily dashboards for our CEO showing MRR, DAU, retention, and conversion funnel. What's the architecture?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "So, need to set up a product analytics pipeline wrt our data sources: PostgreSQL for app DB, Stripe for payments, and Segment for events. Aim is daily dashboards for CEO showing MRR, DAU, retention, and conversion funnel. What architecture should we go for?"
+        },
+        {
+          "role": "assistant",
+          "content": "To achieve that, I'd suggest going with an ELT architecture. It allows us to load the raw data quickly, then transform it directly in the data warehouse. For the warehouse, BigQuery is a good fit since it's cost-effective at around 500GB scale, which sounds like it'll cover us for the next year with ~2M events per day.\n\nFor orchestration, Airflow is a solid choice, especially since your platform team already uses it. For transformations, dbt would provide version-controlled SQL transformations and it's good for testing too.\n\nHere's a high-level overview of the pipeline architecture:\n\n**Pipeline Architecture Document**\n\n- **Sources:**\n  - PostgreSQL: users, orders, sessions\n  - Stripe: subscriptions, invoices, charges\n  - Segment: page views, clicks, custom events\n\n- **Ingestion:**\n  - Custom Python extractors for PostgreSQL CDC\n  - Stripe API\n  - Segment webhooks\n\n- **Warehouse:**\n  - BigQuery\n  - Dataset per medallion layer (raw, cleaned, analytics)\n\n- **Transforms:**\n  - dbt models organized by layer\n\n- **Orchestration:**\n  - Airflow DAG, daily at 6 AM UTC\n\n- **Dashboard:**\n  - Metabase connected to the gold layer\n\n- **Estimated data volume:**\n  - ~2M events/day, ~500GB total after 1 year"
+        },
+        {
+          "role": "user",
+          "content": "Hmm, I'm not sure about ditching ETL entirely. What if we need to pre-process some of the data before loading it into BigQuery? And wait, isn't Snowflake a better option for complex queries?"
+        },
+        {
+          "role": "assistant",
+          "content": "Pre-processing could be handled partially during the extraction phase with custom Python scripts, but keeping it minimal helps us maintain flexibility. For Snowflake, it’s great for complex queries, but at our scale of 500GB, BigQuery comes out cheaper. Plus, Snowflake's cost can scale quickly. Another consideration is that we're avoiding AWS lock-in, and BigQuery supports multi-cloud environments better than Redshift."
+        },
+        {
+          "role": "user",
+          "content": "Okay, let me think about this... Medallion architecture sounds good. Bronze for raw, silver for cleaned, and gold for aggregates, right?"
+        },
+        {
+          "role": "assistant",
+          "content": "Exactly. The bronze layer preserves raw data for debugging and audit purposes. The silver layer will clean and join data across different sources, and the gold layer will contain aggregates that are directly used by dashboards. This approach makes data lineage clear and is an industry standard."
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "day": 3,
+      "time": null,
+      "user_request": "Let's build the ingestion layer. Start with the PostgreSQL extractor.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "let's tackle the ingestion layer. need to start with Postgres extractor. remember, we opting for ELT with BigQuery, dbt, and Airflow. so, wrt CDC strategies, should we consider logical replication or just stick with timestamp-based incremental?"
+        },
+        {
+          "role": "assistant",
+          "content": "For the PostgreSQL extractor, I'd suggest using logical replication combined with wal2json. This approach will capture all changes—like inserts, updates, and deletes—without the need for polling. It's lightweight and efficient. As a fallback, we can use a timestamp-based incremental strategy for tables lacking an updated_at column."
+        },
+        {
+          "role": "user",
+          "content": "hmm, logical replication sounds solid, captures everything. but isn't setting up replication slots complex? wait no, I guess actually it's straightforward with psycopg2, right? just need to ensure exactly-once delivery."
+        },
+        {
+          "role": "assistant",
+          "content": "Exactly, with psycopg2, it's fairly straightforward. We'll implement a CDC extractor that uses the logical replication protocol. Here's a quick look at how we can set it up in `extractors/postgres_cdc.py`:\n\n```python\nimport psycopg2\nfrom psycopg2.extras import LogicalReplicationConnection\n\n# Connect to the database\nconn = psycopg2.connect(\n    dsn=\"dbname=yourdb user=youruser password=yourpass host=yourhost\",\n    connection_factory=LogicalReplicationConnection\n)\ncursor = conn.cursor()\n\n# Create a replication slot\ntry:\n    cursor.create_replication_slot(\"my_slot\", output_plugin=\"wal2json\")\nexcept Exception as e:\n    print(f\"Slot already exists: {e}\")\n\n# Start replication\ncursor.start_replication(slot_name=\"my_slot\", options={'format-version': 1}, decode=True)\n\n# Process changes\nfor message in cursor:\n    process_change(message.payload)\n    cursor.send_feedback(flush_lsn=message.data_start)\n\n# Ensure to track and save the slot position for exactly-once delivery\n```\n\nThe extractor outputs NDJSON files partitioned by table and date, e.g., `raw/postgres/{table}/{date}.jsonl`. It tracks replication slot positions in a state file, handles schema changes by auto-detecting new columns, and preserves dropped ones as null."
+        },
+        {
+          "role": "user",
+          "content": "cool, NDJSON makes sense, esp for loading into BigQuery. uh, what about the loader part? using bq load directly?"
+        },
+        {
+          "role": "assistant",
+          "content": "For loading into BigQuery, we'll use the `google-cloud-bigquery` client library with the `load_table_from_json` method. Here's how we can implement it in `loaders/bigquery_loader.py`:\n\n```python\nfrom google.cloud import bigquery\n\nclient = bigquery.Client()\n\ndef load_data_to_bigquery(dataset_id, table_id, filepath):\n    table_ref = client.dataset(dataset_id).table(table_id)\n    job_config = bigquery.LoadJobConfig(\n        source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,\n        autodetect=True,  # Schema auto-detection for bronze layer\n        write_disposition=bigquery.WriteDisposition.WRITE_APPEND\n    )\n\n    with open(filepath, \"rb\") as json_file:\n        load_job = client.load_table_from_file(json_file, table_ref, job_config=job_config)\n\n    load_job.result()  # Wait for the job to complete\n\n    print(\"Loaded {} rows into {}:{}\".format(load_job.output_rows, dataset_id, table_id))\n\n# For full loads, change write_disposition to WRITE_TRUNCATE\n```\n\nThis approach leverages NDJSON's compatibility with BigQuery, avoiding CSV escaping issues. We'll also partition tables by `_loaded_at` date to ensure cost-efficient queries."
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "day": 7,
+      "time": null,
+      "user_request": "Postgres extractor works. Now Stripe. We need subscription data for MRR calculation.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Postgres extractor works. Now Stripe. We need subscription data for MRR calculation. Remember the ELT approach we decided? Let's talk about handling Stripe's nested objects and pagination."
+        },
+        {
+          "role": "assistant",
+          "content": "Since we're focusing on Stripe, we'll start by using their API to extract the necessary data. We'll need to handle pagination using Stripe's auto-pagination feature. To extract subscriptions, invoices, charges, customers, prices, and products, we'll use `stripe.Subscription.list(limit=100)`, which will auto-paginate through each object type. \n\nFlattens nested objects, like subscription items, into separate rows. We'll use the subscription ID as a foreign key to maintain the relationship. We'll also handle rate limiting with exponential backoff, retrying a max of 5 times if needed. Does that align with what you're thinking?"
+        },
+        {
+          "role": "user",
+          "content": "Wait, won't rate limiting slow us down too much? I mean, 5 retries could add up. Wrapping my head around the trade-offs here... let me think about this. Okay, maybe we should have a fallback plan? Also, on the nested objects, what's the impact on our schema in BigQuery?"
+        },
+        {
+          "role": "assistant",
+          "content": "Good point about rate limiting. We could reduce the maximum retries or even implement a notification if the retries exceed a certain threshold. As for the nested objects, by flattening them into separate rows, our schema in BigQuery will have additional tables or columns dedicated to these details, like subscription items. This approach keeps the data atomic and easier to query for specific insights.\n\nHere's what the Stripe extractor might look like:\n\n```python\nimport stripe\nimport time\n\nstripe.api_key = 'your_stripe_api_key'\n\nclass StripeExtractor:\n    def __init__(self, last_run_timestamp):\n        self.last_run_timestamp = last_run_timestamp\n\n    def extract_data(self):\n        self.extract_subscriptions()\n\n    def extract_subscriptions(self):\n        try:\n            for subscription in stripe.Subscription.list(limit=100, created={\"gte\": self.last_run_timestamp}).auto_paging_iter():\n                self.handle_subscription(subscription)\n                time.sleep(0.2)  # Adjust for rate limiting\n        except stripe.error.RateLimitError as e:\n            self.handle_rate_limit(e)\n\n    def handle_subscription(self, subscription):\n        # Flatten subscription items into separate rows\n        for item in subscription['items']['data']:\n            # Write each item to BigQuery\n            pass\n\n    def handle_rate_limit(self, error):\n        retries = 0\n        while retries < 5:\n            time.sleep(2 ** retries)  # Exponential backoff\n            retries += 1\n        if retries == 5:\n            raise error\n\nextractor = StripeExtractor(last_run_timestamp=1625097600)  # Example timestamp\nextractor.extract_data()\n```\n\nWhat do you think about this approach?"
+        },
+        {
+          "role": "user",
+          "content": "Afaik this seems to cover most bases. We'll need to test the rate limit strategy thoroughly, though. I'll check the subscription status mapping to ensure it aligns with our MRR calc needs. Btw, we'll need to store raw JSON somewhere, right?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yes, storing raw JSON is a good idea to ensure there's no data loss and to give us the option to reprocess if needed. We could store it in a raw data layer in BigQuery under the bronze tier of our medallion architecture. This way, we maintain a complete record of all extracted data.\n\nKeep me posted on the status mapping and how it connects with the MRR calculations, so we can adjust the extraction or transformation logic if necessary."
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "day": 10,
+      "time": null,
+      "user_request": "Time for the dbt models. Let's start with the MRR calculation — that's the most important metric for the CEO.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Time for the dbt models. Let's start with the MRR calculation — that's the most important metric for the CEO."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it. So for MRR, we're focusing on subscription-level monthly normalization. This means we normalize each active subscription's plan price monthly: annual plans divided by 12, quarterly by 3. This approach avoids the noise from invoice-based calculations, which often include one-time charges and credits."
+        },
+        {
+          "role": "user",
+          "content": "That makes sense. But what about edge cases like mid-month plan changes or trial subscriptions? How are we handling those?"
+        },
+        {
+          "role": "assistant",
+          "content": "For mid-month plan changes, we'll use prorated amounts to reflect the accurate MRR. Trial subscriptions will be excluded until they convert. This way, we maintain consistency with how SaaS investors expect these metrics reported."
+        },
+        {
+          "role": "user",
+          "content": "Hmm, using prorated amounts seems tricky. Why not just wait until the full month ends and use the new rate? Actually, scratch that, let me think about this... okay, prorated does give more accuracy wrt actual usage within the month."
+        },
+        {
+          "role": "assistant",
+          "content": "Exactly, prorated amounts give a precise picture of MRR changes. Here's how the dbt models will look:\n\n```sql\n-- stg_stipe_subscriptions\nSELECT\n  id AS subscription_id,\n  customer_id,\n  status,\n  plan_amount,\n  interval\nFROM\n  stripe_subscriptions\nWHERE\n  status = 'active';\n\n-- int_subscription_mrr\nSELECT\n  subscription_id,\n  plan_amount / CASE interval \n    WHEN 'year' THEN 12 \n    WHEN 'quarter' THEN 3 \n    ELSE 1 END AS monthly_mrr\nFROM\n  stg_stipe_subscriptions;\n\n-- int_mrr_movements\nSELECT\n  customer_id,\n  monthly_mrr - LAG(monthly_mrr) OVER (PARTITION BY customer_id ORDER BY month) AS mrr_change,\n  CASE \n    WHEN mrr_change > 0 THEN 'expansion'\n    WHEN mrr_change < 0 THEN 'contraction'\n    ELSE 'churn' END AS movement_type\nFROM\n  int_subscription_mrr;\n\n-- fct_mrr_daily\nSELECT\n  date,\n  SUM(monthly_mrr) AS total_mrr\nFROM\n  int_subscription_mrr\nGROUP BY\n  date;\n\n-- fct_mrr_movements_monthly\nSELECT\n  month,\n  SUM(CASE WHEN movement_type = 'new' THEN mrr_change ELSE 0 END) AS new_mrr,\n  SUM(CASE WHEN movement_type = 'expansion' THEN mrr_change ELSE 0 END) AS expansion_mrr,\n  SUM(CASE WHEN movement_type = 'contraction' THEN mrr_change ELSE 0 END) AS contraction_mrr,\n  SUM(CASE WHEN movement_type = 'churn' THEN mrr_change ELSE 0 END) AS churn_mrr,\n  SUM(CASE WHEN movement_type = 'reactivation' THEN mrr_change ELSE 0 END) AS reactivation_mrr\nFROM\n  int_mrr_movements\nGROUP BY\n  month;\n\n-- dbt tests\nSELECT\n  COUNT(*)\nFROM\n  fct_mrr_daily\nWHERE\n  total_mrr < 0;\n\nSELECT\n  month,\n  SUM(new_mrr + expansion_mrr - contraction_mrr - churn_mrr + reactivation_mrr) AS net_mrr_change\nFROM\n  fct_mrr_movements_monthly\nGROUP BY\n  month\nHAVING\n  net_mrr_change != SUM(mrr_change);\n```\n\nThese models should cover the scenarios we discussed, with checks ensuring no negative MRR and movements summing correctly."
+        },
+        {
+          "role": "user",
+          "content": "Looks comprehensive. As long as we handle the trial exclusions and the prorated amounts correctly, this should align well with our goals. Let's move on to test these with some sample data next."
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "day": 14,
+      "time": null,
+      "user_request": "The retention numbers look weird. Week 1 retention is showing 120% for some cohorts. Something's wrong with the data.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "seeing some odd retention numbers, like 120% in week 1 for some cohorts. Something's not right. let me think about this... could it be duplicate events? remember we talked about Segment's retries?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yeah, I checked and Segment is sending duplicate events due to webhook delivery retries. Our endpoint sometimes takes more than 5 seconds, causing Segment to resend, leading to duplicates. About 15% of events are affected."
+        },
+        {
+          "role": "user",
+          "content": "hmm, that sounds plausible. but why not just adjust the timeout? Isn't that simpler than deduplication in dbt?"
+        },
+        {
+          "role": "assistant",
+          "content": "We could adjust the timeout, but deduplication in dbt gives us more control and is less brittle. Segment's messageId acts as a built-in idempotency key, which we can use for deduplication. Here’s the fix we implemented in dbt:\n\n```sql\nSELECT * FROM (\n  SELECT *,\n  ROW_NUMBER() OVER (PARTITION BY message_id ORDER BY received_at) as rn\n  FROM stg_segment_events\n) WHERE rn = 1\n```\n\nPlus, I added a dbt test to ensure no duplicate message_ids in staging and created a data quality dashboard to track duplicate rate trends. After deduplication, retention numbers dropped to a realistic ~45% for week 1."
+        },
+        {
+          "role": "user",
+          "content": "okay, I see the point about control. what about session definition? wrt app DB vs analytics, there's a mismatch, right?"
+        },
+        {
+          "role": "assistant",
+          "content": "Right, there's a mismatch. The app DB uses a login-to-logout window for sessions, but analytics models it with a 30-minute inactivity gap, aligning with GA4 and Amplitude standards. This can inflate DAU when counting distinct sessions. In our session model, I defined a new session as:\n\n```sql\nCASE WHEN TIMESTAMP_DIFF(next_event_time, current_event_time, MINUTE) > 30 THEN 1 ELSE 0 END as is_new_session\n```\n\nThis aligns sessions across tools and reduces inflated user counts."
+        },
+        {
+          "role": "user",
+          "content": "got it. we'll need to document this discrepancy for future ref, especially if it affects decision-making. let's wrap this up for now."
+        },
+        {
+          "role": "assistant",
+          "content": "Absolutely, documenting this is crucial for consistency across our analytics. I'll add a note to our documentation about the session definition difference."
+        }
+      ]
+    },
+    {
+      "id": "s6",
+      "day": 17,
+      "time": null,
+      "user_request": "Build the remaining gold layer models: DAU, retention cohorts, and conversion funnel.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "So we need to finish up the gold layer models — thinking DAU, retention cohorts, and conversion funnel. I've got the basics but would like to walk through the setup. Last time we decided on dbt models building on the ELT architecture. Let's make sure the retention cohorts don't have issues like the Segment duplicates we found."
+        },
+        {
+          "role": "assistant",
+          "content": "Right, for the gold layer, let's start with the DAU model. Here's how I'd define it in dbt:\n\n```sql\n-- models/gold/fct_dau.sql\nWITH daily_events AS (\n  SELECT\n    DATE_TRUNC(event_time, DAY) AS event_date,\n    user_id\n  FROM `your_project.your_dataset.events`\n  WHERE event_time > CURRENT_DATE() - INTERVAL 3 DAY\n  GROUP BY 1, 2\n)\n\nSELECT\n  event_date,\n  COUNT(DISTINCT user_id) AS daily_active_users\nFROM daily_events\nGROUP BY event_date\n```\n\nThis counts distinct user_ids with at least one event per day. Keeping it incremental by only reprocessing the last 3 days to manage late arrivals."
+        },
+        {
+          "role": "user",
+          "content": "Hmm, wrt that DAU model, does event_time cover all data sources, or are we missing postgress events? Just want to make sure we're capturing everything, especially with our expansion plans."
+        },
+        {
+          "role": "assistant",
+          "content": "Good point. The `event_time` should be capturing from all sources if our ingestion is set up correctly, but we should double-check that PostgreSQL events are included in the `your_project.your_dataset.events` table as expected. Now, for the retention cohorts model:\n\n```sql\n-- models/gold/fct_retention_cohorts.sql\nWITH signup_cohorts AS (\n  SELECT\n    DATE_TRUNC(signup_date, WEEK) AS cohort_week,\n    user_id\n  FROM `your_project.your_dataset.users`\n  WHERE signup_date > CURRENT_DATE() - INTERVAL 90 DAY\n),\ncohort_activity AS (\n  SELECT\n    DATE_TRUNC(event_time, WEEK) AS activity_week,\n    user_id,\n    cohort_week\n  FROM `your_project.your_dataset.events` e\n  JOIN signup_cohorts sc ON e.user_id = sc.user_id\n  WHERE event_time > CURRENT_DATE() - INTERVAL 90 DAY\n)\n\nSELECT\n  cohort_week,\n  activity_week,\n  COUNT(DISTINCT user_id) AS retained_users\nFROM cohort_activity\nGROUP BY cohort_week, activity_week\n```\n\nThis uses signup week for cohort definition and measures retention by any activity in subsequent weeks."
+        },
+        {
+          "role": "user",
+          "content": "Retention logic looks good. Let's ensure no duplicate users in cohorts due to the Segment issue. Now, for conversion funnel — 5 steps, right?"
+        },
+        {
+          "role": "assistant",
+          "content": "Exactly, 5 steps: visit, signup, onboarding_complete, first_action, paid_conversion. Here's the funnel model:\n\n```sql\n-- models/gold/fct_conversion_funnel.sql\nWITH funnel_steps AS (\n  SELECT\n    user_id,\n    MIN(CASE WHEN event_type = 'visit' THEN event_time END) AS visit_time,\n    MIN(CASE WHEN event_type = 'signup' THEN event_time END) AS signup_time,\n    MIN(CASE WHEN event_type = 'onboarding_complete' THEN event_time END) AS onboarding_time,\n    MIN(CASE WHEN event_type = 'first_action' THEN event_time END) AS first_action_time,\n    MIN(CASE WHEN event_type = 'paid_conversion' THEN event_time END) AS conversion_time\n  FROM `your_project.your_dataset.events`\n  WHERE event_time > CURRENT_DATE() - INTERVAL 3 DAY\n  GROUP BY user_id\n),\nconversion_funnel AS (\n  SELECT\n    user_id,\n    CASE\n      WHEN signup_time IS NOT NULL AND signup_time <= visit_time + INTERVAL 14 DAY THEN 1 ELSE 0 END AS signed_up,\n      WHEN onboarding_time IS NOT NULL AND onboarding_time <= signup_time + INTERVAL 14 DAY THEN 1 ELSE 0 END AS onboarded,\n      WHEN first_action_time IS NOT NULL AND first_action_time <= onboarding_time + INTERVAL 14 DAY THEN 1 ELSE 0 END AS acted,\n      WHEN conversion_time IS NOT NULL AND conversion_time <= first_action_time + INTERVAL 14 DAY THEN 1 ELSE 0 END AS converted\n  FROM funnel_steps\n)\n\nSELECT\n  COUNT(DISTINCT user_id) AS total_users,\n  SUM(signed_up) AS total_signed_up,\n  SUM(onboarded) AS total_onboarded,\n  SUM(acted) AS total_acted,\n  SUM(converted) AS total_converted\nFROM conversion_funnel\n```\n\nWe use a 14-day attribution window between steps for the conversion funnel."
+        },
+        {
+          "role": "user",
+          "content": "Alright, makes sense. Let's keep an eye on any late-arriving events that could affect the conversion rates. Thanks for the detailed walk-through!"
+        }
+      ]
+    },
+    {
+      "id": "s7",
+      "day": 20,
+      "time": null,
+      "user_request": "Last step — set up the Metabase dashboard and the Airflow DAG to run everything daily.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "so the final step — need to get the Metabase dashboard up and the Airflow DAG to automate everything daily. wrt the DAG, thinking of scheduling it for early morning to ensure the data's fresh for the CEO's dashboard. what do you think?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yeah, scheduling the DAG for early morning makes sense. Here's how we can set it up:\n\n```python\nfrom airflow import DAG\nfrom airflow.operators.dummy_operator import DummyOperator\nfrom airflow.operators.python_operator import PythonOperator\nfrom datetime import datetime, timedelta\n\ndef extract_postgres():\n    pass  # Add logic for extracting from PostgreSQL\n\ndef extract_stripe():\n    pass  # Add logic for extracting from Stripe\n\ndef extract_segment():\n    pass  # Add logic for extracting from Segment\n\ndef dbt_run():\n    pass  # Add logic to run dbt build\n\ndef dbt_test():\n    pass  # Add logic to run dbt tests\n\ndef notify_slack(context):\n    pass  # Add Slack notification logic\n\nwith DAG(\n    'analytics_pipeline',\n    default_args={\n        'owner': 'airflow',\n        'depends_on_past': False,\n        'start_date': datetime(2023, 1, 1),\n        'email_on_failure': False,\n        'email_on_retry': False,\n        'retries': 2,\n        'retry_delay': timedelta(minutes=10),\n    },\n    schedule_interval='0 6 * * *',  # Daily at 6 AM UTC\n    catchup=False,\n) as dag:\n    extract_postgres = PythonOperator(\n        task_id='extract_postgres',\n        python_callable=extract_postgres\n    )\n\n    extract_stripe = PythonOperator(\n        task_id='extract_stripe',\n        python_callable=extract_stripe\n    )\n\n    extract_segment = PythonOperator(\n        task_id='extract_segment',\n        python_callable=extract_segment\n    )\n\n    dbt_run = PythonOperator(\n        task_id='dbt_run',\n        python_callable=dbt_run\n    )\n\n    dbt_test = PythonOperator(\n        task_id='dbt_test',\n        python_callable=dbt_test\n    )\n\n    notify_slack = PythonOperator(\n        task_id='notify_slack',\n        python_callable=notify_slack,\n        trigger_rule='one_failed'\n    )\n\n    extract_postgres >> extract_stripe >> extract_segment >> dbt_run >> dbt_test >> notify_slack\n```\n\n- Extractors run in parallel to speed up processing.\n- dbt tasks fail fast with no retries, but extractors have 2 retries with a 10-minute delay.\n- Notifies #data-alerts channel if any task fails, with error details.\n- The entire pipeline needs to complete within 2 hours, otherwise, it triggers an alert."
+        },
+        {
+          "role": "user",
+          "content": "wait, why not just run dbt run and dbt test together? we already have both set in the dbt build command, right?"
+        },
+        {
+          "role": "assistant",
+          "content": "Good point. Using `dbt build` would indeed run both the models and tests in order of their dependencies. Let's update the DAG to just have a `dbt_build` task then:\n\n```python\n# Update the dbt_run task\n    dbt_build = PythonOperator(\n        task_id='dbt_build',\n        python_callable=dbt_run\n    )\n\n# Update the task order\n    extract_postgres >> extract_stripe >> extract_segment >> dbt_build >> notify_slack\n```"
+        },
+        {
+          "role": "user",
+          "content": "nice, that simplifies things. now about the Metabase dashboard, need to outline the key sections for the CEO metrics. let me think about this... okay, here's what I'm considering:"
+        },
+        {
+          "role": "assistant",
+          "content": "Here's a draft for the Metabase dashboard specification:\n\n**Dashboard Name:** CEO Daily Metrics\n\n- **Revenue Section**:\n  - MRR Chart: Displays the MRR trend over time as a line chart, with a target line set at $100K.\n  - MRR Movements Table: Shows breakdowns of MRR changes (new, expansion, contraction, churn, reactivation).\n\n- **Engagement Section**:\n  - DAU Trend: Line chart showing daily active users.\n  - WAU/MAU: Compare weekly and monthly active users, probably as a bar chart.\n\n- **Retention Section**:\n  - Cohort Heatmap: Color-coded by weekly cohorts, with colors indicating retention levels (green >40%, yellow 20-40%, red <20%).\n\n- **Growth Section**:\n  - Conversion Funnel: Bar chart illustrating percentages of users dropping off between specific steps.\n  - Signup Trend: Tracks daily or weekly new signups.\n\n- **Date Filter**: Defaults to the last 30 days, allows expansion to 90 days or custom date ranges.\n- **Auto-refresh**: Every 6 hours to keep data current for decision-making.\n\nLet me know if there's anything you'd like to adjust or add."
+        },
+        {
+          "role": "user",
+          "content": "looks solid! afaik, that's everything we need to cover for now. thanks for the help."
+        }
+      ]
+    }
+  ],
+  "qa_pairs": [
+    {
+      "question": "What warehouse was chosen for the analytics pipeline and why?",
+      "answer": "BigQuery, because it was cheapest at the expected scale (~500GB). Snowflake was more expensive, Redshift had AWS lock-in concerns.",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What are the three data sources feeding the pipeline?",
+      "answer": "PostgreSQL (users, orders, sessions), Stripe (subscriptions, invoices, charges), and Segment (page views, clicks, custom events)",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What is the medallion architecture used in this pipeline?",
+      "answer": "Three layers: bronze (raw data), silver (cleaned and normalized), gold (aggregated dashboard-ready metrics)",
+      "evidence_sessions": [
+        "s1"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How is MRR calculated and why wasn't invoice-based MRR used?",
+      "answer": "MRR is calculated at the subscription level by normalizing plan prices to monthly amounts (annual/12, quarterly/3). Invoice-based MRR was rejected because invoices include one-time charges, prorations, and credits which make it noisy.",
+      "evidence_sessions": [
+        "s4"
+      ],
+      "type": "decision_reasoning",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What MRR movement categories are tracked?",
+      "answer": "New, expansion, contraction, churn, and reactivation",
+      "evidence_sessions": [
+        "s4"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What caused retention numbers to show over 100%?",
+      "answer": "Two issues: Segment was sending duplicate events (~15% of events had the same messageId due to webhook retry timeouts), and there was a session definition mismatch between the app DB (login-to-logout) and analytics (30-min inactivity gap) that inflated DAU.",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "multi-hop"
+    },
+    {
+      "question": "How were duplicate Segment events fixed?",
+      "answer": "Deduplication using ROW_NUMBER() OVER (PARTITION BY message_id ORDER BY received_at) = 1 in the staging model. This removed ~15% duplicate events.",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "artifact_content",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What is the conversion funnel definition?",
+      "answer": "5 steps: visit → signup → onboarding_complete → first_action → paid_conversion, with a 14-day attribution window between steps.",
+      "evidence_sessions": [
+        "s6"
+      ],
+      "type": "artifact_content",
+      "difficulty": "detail"
+    },
+    {
+      "question": "What is the Airflow DAG schedule and task order?",
+      "answer": "Runs daily at 6 AM UTC. Order: extract_postgres, extract_stripe, extract_segment (in parallel) → dbt_run → dbt_test → notify_slack. SLA is 2 hours.",
+      "evidence_sessions": [
+        "s7"
+      ],
+      "type": "artifact_content",
+      "difficulty": "detail"
+    },
+    {
+      "question": "What CDC strategy is used for PostgreSQL extraction?",
+      "answer": "Logical replication with wal2json for CDC, with a fallback to timestamp-based incremental extraction (MAX updated_at watermark) for tables without updated_at columns.",
+      "evidence_sessions": [
+        "s2"
+      ],
+      "type": "fact_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "How does the pipeline handle late-arriving events?",
+      "answer": "Gold layer models are incremental and reprocess the last 3 days to handle late-arriving events.",
+      "evidence_sessions": [
+        "s6"
+      ],
+      "type": "artifact_content",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What retention metric was found after fixing the data quality issues?",
+      "answer": "Week-1 retention dropped from the inflated 120% to a realistic ~45% after deduplicating Segment events.",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "single-hop"
+    },
+    {
+      "question": "What sections does the CEO dashboard contain?",
+      "answer": "4 sections: Revenue (MRR chart + movements table), Engagement (DAU trend + WAU/MAU), Retention (cohort heatmap), and Growth (conversion funnel + signup trend)",
+      "evidence_sessions": [
+        "s7"
+      ],
+      "type": "artifact_content",
+      "difficulty": "detail"
+    },
+    {
+      "question": "Why was Segment sending duplicate events?",
+      "answer": "Segment's webhook delivery retries on timeout. The webhook endpoint returned 200 but sometimes took >5 seconds, causing Segment to retry. This resulted in ~15% duplicate events.",
+      "evidence_sessions": [
+        "s5"
+      ],
+      "type": "discovery_recall",
+      "difficulty": "single-hop"
+    }
+  ],
+  "persona": {
+    "role": "Mid-level data engineer, 4 years experience, background in Python and SQL",
+    "communication_style": "methodical and detail-oriented, writes medium-length messages, likes to reason through trade-offs before deciding, uses technical terms precisely",
+    "quirks": [
+      "often says 'let me think about this...' then writes a pros/cons list",
+      "uses 'wrt' (with regard to) and 'afaik' abbreviations",
+      "corrects themselves mid-message with 'wait no' or 'actually scratch that'"
+    ],
+    "context": "Ride-sharing startup in Sao Paulo, 60-person company, processing 2M+ daily ride events, expanding across Latin America"
+  }
+}

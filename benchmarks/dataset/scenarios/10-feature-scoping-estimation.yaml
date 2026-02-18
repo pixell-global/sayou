@@ -1,0 +1,256 @@
+id: scenario-10
+title: "Scope and Estimate a Multi-Tenant Permissions Feature"
+domain: product-engineering
+category: plan
+description: >
+  A product manager and tech lead scope a complex multi-tenant permissions
+  feature for a B2B SaaS product. Over 6 sessions across 2 weeks, the agent
+  helps define requirements, design the data model, estimate effort, handle
+  scope creep, and produce a product spec with engineering estimates.
+total_sessions: 6
+estimated_tokens: 12000
+
+persona:
+  role: "Senior product manager, 5 years experience, technical background (former frontend developer)"
+  communication_style: "pragmatic and deadline-driven, balances technical and business concerns, uses short paragraphs, often frames things in terms of customer requests"
+  quirks:
+    - "says 'the PM just told me' or 'enterprise customers are asking for' to cite pressure"
+    - "uses 'scope creep' as a verb ('this is starting to scope-creep')"
+    - "sometimes includes rough estimates in parentheses that turn out to be wrong"
+  context: "Project management SaaS in Chicago, 90-person company, serving mid-market B2B clients, competing with Asana and Monday.com"
+
+sessions:
+  - id: s1
+    day: 1
+    user_request: "We need to add roles and permissions to our B2B SaaS app. Right now everyone in an organization has the same access. Customers are asking for admin, editor, and viewer roles. How should we approach this?"
+    conversation_topics:
+      - RBAC vs ABAC
+      - Permission granularity
+      - Multi-tenant isolation
+    decisions:
+      - choice: "RBAC with predefined roles (owner, admin, editor, viewer) and resource-level permissions"
+        reasoning: "ABAC is more flexible but way more complex to implement and debug. Our customers are asking for simple role-based access, not attribute-based policies. 4 predefined roles cover 95% of use cases. We can add custom roles later if needed."
+        alternatives_considered: ["ABAC (too complex)", "Simple admin/member binary (too limiting)", "Custom roles from day 1 (scope creep risk)"]
+      - choice: "Permissions checked at API middleware level, not in business logic"
+        reasoning: "Checking permissions in middleware ensures every endpoint is protected by default. Business logic doesn't need to know about permissions. Middleware reads user's role → checks against endpoint's required permission → allows or denies."
+    artifacts:
+      - type: document
+        description: "Role and permission matrix"
+        key_facts:
+          - "4 roles: owner (1 per org, cannot be deleted), admin (full access except billing), editor (create/edit content, no user management), viewer (read-only)"
+          - "Permission categories: users (invite, remove, change_role), content (create, edit, delete, publish), billing (view_invoices, change_plan), settings (org_name, integrations, API_keys), analytics (view_dashboards, export_data)"
+          - "Owner gets all permissions, Admin gets all except billing.change_plan, Editor gets content.* + analytics.view_dashboards, Viewer gets content.read + analytics.view_dashboards"
+          - "Resource-level override: editor can be restricted to specific projects within the org"
+          - "Invitation flow: admin/owner invites user with a role, invited user gets email, clicks link, joins org with that role"
+    entities: ["RBAC", "PostgreSQL"]
+
+  - id: s2
+    day: 3
+    user_request: "Design the database schema for this. We're on PostgreSQL with SQLAlchemy."
+    conversation_topics:
+      - Schema design for multi-tenant RBAC
+      - Performance considerations
+      - Migration strategy for existing users
+    artifacts:
+      - type: code
+        description: "Database schema (SQLAlchemy models)"
+        key_facts:
+          - "Table: roles — id, name, org_id (nullable, null = system role), permissions (JSONB array)"
+          - "Table: org_memberships — id, user_id, org_id, role_id, invited_by, joined_at, status (active/invited/suspended)"
+          - "Table: resource_permissions — id, membership_id, resource_type, resource_id, permissions (JSONB override)"
+          - "System roles (org_id=null): owner, admin, editor, viewer — seeded on app startup"
+          - "Composite unique index on org_memberships(user_id, org_id) — user can only have one role per org"
+          - "Foreign key: org_memberships.role_id → roles.id"
+          - "JSONB permissions example: ['content.create', 'content.edit', 'analytics.view']"
+      - type: code
+        description: "Migration script"
+        key_facts:
+          - "Alembic migration: creates roles, org_memberships, resource_permissions tables"
+          - "Seeds 4 system roles with their permission sets"
+          - "Data migration: existing users converted to org_memberships with 'owner' role (first user in each org) or 'admin' role (subsequent users)"
+          - "Backward compatible: old API endpoints continue working during rollout"
+    builds_on: [s1]
+    entities: ["SQLAlchemy", "Alembic", "PostgreSQL"]
+
+  - id: s3
+    day: 5
+    user_request: "The PM just told me enterprise customers also want SSO and audit logs. Should we include those in this project?"
+    conversation_topics:
+      - Scope management
+      - Feature dependencies
+      - MVP vs full feature set
+    decisions:
+      - choice: "Exclude SSO, include basic audit log"
+        reasoning: "SSO is a separate 3-4 week project involving SAML/OIDC integration, IdP configuration UI, and JIT provisioning. It's related to permissions but not dependent on it. Audit log is lightweight — just log who changed what role/permission — and customers need it to verify their permission setup is correct."
+      - choice: "Audit log implemented as append-only table with 90-day retention"
+        reasoning: "Append-only is simple and fast. 90-day retention prevents table bloat. Events logged: role_changed, user_invited, user_removed, permission_overridden, resource_access_denied."
+    artifacts:
+      - type: document
+        description: "Scope decision document"
+        key_facts:
+          - "In scope: RBAC (4 roles), permission middleware, invitation flow, role management UI, audit log, API key permissions"
+          - "Out of scope: SSO/SAML (separate project, ~4 weeks), custom roles (v2), IP whitelisting (v2), session management (v2)"
+          - "Audit log events: role_changed, user_invited, user_removed, permission_overridden, resource_access_denied"
+          - "Audit log API: GET /audit-log?org_id=X&action=Y&since=Z — filterable by action type and date range"
+          - "Audit log retention: 90 days for free tier, 1 year for enterprise tier"
+    builds_on: [s1, s2]
+
+  - id: s4
+    day: 8
+    user_request: "Give me engineering estimates for each component. I need to present this at sprint planning."
+    conversation_topics:
+      - Estimation methodology
+      - Risk factors
+      - Parallelization opportunities
+    artifacts:
+      - type: document
+        description: "Engineering estimates"
+        key_facts:
+          - "Total estimate: 6.5 weeks with 2 engineers"
+          - "Backend — RBAC core (roles, permissions, middleware): 1.5 weeks"
+          - "Backend — Invitation flow (email, accept/decline, expiry): 1 week"
+          - "Backend — Audit log (events, API, retention): 0.5 weeks"
+          - "Backend — API key permissions (scoped keys per role): 0.5 weeks"
+          - "Frontend — Role management UI (assign, change, remove roles): 1 week"
+          - "Frontend — Invitation UI (send, pending list, resend): 0.5 weeks"
+          - "Frontend — Permission-gated UI (hide/show features based on role): 1 week"
+          - "Integration testing + QA: 0.5 weeks"
+          - "Parallelization: backend and frontend can work concurrently after RBAC core is done (saves ~1.5 weeks)"
+          - "Risk buffer: 20% — if scope changes or integration issues arise"
+          - "Critical path: RBAC core → middleware → all other backend tasks (no frontend work can start until middleware returns role info)"
+          - "Dependency: email service must support invitation template (estimated 2 hours, already have SendGrid integration)"
+    builds_on: [s1, s2, s3]
+
+  - id: s5
+    day: 10
+    user_request: "During implementation, we realized the 'editor restricted to specific projects' feature is harder than expected. The current data model doesn't have a concept of 'project' — content is flat. What do we do?"
+    conversation_topics:
+      - Scope re-evaluation mid-sprint
+      - Technical debt vs feature completeness
+      - Workarounds
+    discoveries:
+      - finding: "Content model is flat — no project/folder hierarchy"
+        detail: "All content (documents, templates, campaigns) lives in a single table with org_id but no grouping. To do project-level permissions, we'd need to add a 'projects' table, migrate all existing content into a default project, add project_id to content tables, and update all content queries."
+      - finding: "Adding projects is a 2-3 week project on its own"
+        detail: "It touches 14 API endpoints, 8 frontend pages, and requires a data migration for 50K existing content items. This would blow the 6.5-week estimate by 40%."
+    decisions:
+      - choice: "Defer resource-level permissions to v2, ship RBAC with org-wide roles only"
+        reasoning: "The core ask from customers is role-based access (admin vs editor vs viewer). Project-level permissions is a nice-to-have that requires the 'projects' feature to exist first. Ship org-wide roles now (covers 90% of customer requests), add project-level in v2 after the projects feature is built."
+      - choice: "Document the limitation and workaround"
+        reasoning: "Customers who need per-content access control can create separate organizations. It's not ideal but it works today."
+    artifacts:
+      - type: document
+        description: "Scope adjustment memo"
+        key_facts:
+          - "Removed from v1: resource-level permissions (project-scoped editor role)"
+          - "Reason: content model is flat, adding projects is a 2-3 week project affecting 14 endpoints and 8 pages"
+          - "Workaround: customers can create separate organizations for content isolation"
+          - "Updated estimate: 5 weeks with 2 engineers (saved 1.5 weeks by removing resource-level)"
+          - "v2 plan: add projects feature (2-3 weeks) → then add resource-level permissions (1 week)"
+          - "PM acknowledged trade-off and agreed to ship org-wide roles first"
+    builds_on: [s1, s2, s4]
+
+  - id: s6
+    day: 14
+    user_request: "Write the final product spec that covers everything we decided. Include the v1/v2 split and the technical architecture. This is the source of truth for the team."
+    artifacts:
+      - type: document
+        description: "Product spec: Multi-tenant roles & permissions"
+        key_facts:
+          - "Document title: PRD — Multi-Tenant Roles & Permissions"
+          - "Version: 1.0, Last updated: Day 14"
+          - "v1 scope: 4 org-wide roles (owner/admin/editor/viewer), permission middleware, invitation flow, role management UI, audit log, API key permissions"
+          - "v2 scope (after projects feature): resource-level permissions, custom roles, SCIM provisioning"
+          - "Architecture: permissions checked in FastAPI middleware using dependency injection. Middleware reads JWT → extracts user_id → queries org_membership → checks role permissions against endpoint requirements"
+          - "Permission decorator: @require_permission('content.create') on route handlers"
+          - "Frontend: usePermission() React hook that returns hasPermission(action) function. Components wrapped in <PermissionGate permission='content.create'> render nothing for unauthorized users"
+          - "API response includes user's permissions in /me endpoint: { role: 'editor', permissions: ['content.create', 'content.edit', ...] }"
+          - "Rollout plan: internal testing (1 week) → beta with 3 enterprise customers → GA"
+          - "Success metrics: 80% of enterprise customers adopt roles within 30 days, support tickets about access control decrease by 50%"
+          - "Timeline: 5 weeks with 2 engineers, GA target: March 21"
+    builds_on: [s1, s2, s3, s4, s5]
+
+qa_pairs:
+  - question: "What permission model was chosen and why?"
+    answer: "RBAC with 4 predefined roles (owner, admin, editor, viewer). ABAC was rejected as too complex — customers asked for simple role-based access, and 4 predefined roles cover 95% of use cases."
+    evidence_sessions: [s1]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What are the four roles and their key differences?"
+    answer: "Owner (1 per org, all permissions, cannot be deleted), Admin (all except billing.change_plan), Editor (content.* + analytics.view_dashboards), Viewer (content.read + analytics.view_dashboards)"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: detail
+
+  - question: "Where are permissions checked in the architecture?"
+    answer: "At the API middleware level using FastAPI dependency injection. Middleware reads JWT → extracts user_id → queries org_membership → checks role permissions against endpoint requirements. Business logic doesn't need to know about permissions."
+    evidence_sessions: [s1, s6]
+    type: artifact_content
+    difficulty: single-hop
+
+  - question: "Why was SSO excluded from the project scope?"
+    answer: "SSO is a separate 3-4 week project involving SAML/OIDC integration, IdP configuration UI, and JIT provisioning. It's related to permissions but not dependent on it."
+    evidence_sessions: [s3]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What is the audit log retention policy?"
+    answer: "90 days for free tier, 1 year for enterprise tier. It's implemented as an append-only table."
+    evidence_sessions: [s3]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was the original engineering estimate and what did it change to?"
+    answer: "Originally 6.5 weeks with 2 engineers. Reduced to 5 weeks after removing resource-level permissions from v1 scope."
+    evidence_sessions: [s4, s5]
+    type: cross_session
+    difficulty: multi-hop
+
+  - question: "Why were resource-level permissions deferred to v2?"
+    answer: "The content model is flat with no project/folder hierarchy. Adding projects would require a 2-3 week project touching 14 API endpoints and 8 frontend pages, blowing the estimate by 40%. Since org-wide roles cover 90% of customer requests, project-level permissions were deferred."
+    evidence_sessions: [s5]
+    type: decision_reasoning
+    difficulty: multi-hop
+
+  - question: "How are existing users migrated when RBAC is added?"
+    answer: "First user in each organization gets the 'owner' role, subsequent users get 'admin' role. Old API endpoints continue working during rollout for backward compatibility."
+    evidence_sessions: [s2]
+    type: artifact_content
+    difficulty: single-hop
+
+  - question: "What is the workaround for customers who need per-content access control in v1?"
+    answer: "Customers can create separate organizations for content isolation."
+    evidence_sessions: [s5]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What frontend pattern is used for permission-gated UI?"
+    answer: "A usePermission() React hook that returns a hasPermission(action) function, and a <PermissionGate permission='content.create'> component that renders nothing for unauthorized users."
+    evidence_sessions: [s6]
+    type: artifact_content
+    difficulty: single-hop
+
+  - question: "What are the success metrics for the feature?"
+    answer: "80% of enterprise customers adopt roles within 30 days, and support tickets about access control decrease by 50%."
+    evidence_sessions: [s6]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What audit log events are tracked?"
+    answer: "role_changed, user_invited, user_removed, permission_overridden, resource_access_denied"
+    evidence_sessions: [s3]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What is the critical path for implementing the feature?"
+    answer: "RBAC core → middleware → all other backend tasks. No frontend work can start until middleware returns role info. Backend and frontend can work concurrently after RBAC core is done."
+    evidence_sessions: [s4]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "How are permissions stored in the database?"
+    answer: "As JSONB arrays in the roles table (e.g., ['content.create', 'content.edit', 'analytics.view']). Resource-level overrides are in a separate resource_permissions table."
+    evidence_sessions: [s2]
+    type: artifact_content
+    difficulty: single-hop

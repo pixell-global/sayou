@@ -1,0 +1,273 @@
+id: scenario-09
+title: "Plan a Monolith-to-Microservices Migration"
+domain: architecture
+category: plan
+description: >
+  A tech lead plans the decomposition of a Django monolith into microservices.
+  Over 7 sessions across 3 weeks, the agent analyzes domain boundaries,
+  designs service interfaces, creates a migration roadmap, handles pushback
+  from senior engineers, and drafts an RFC for team review.
+total_sessions: 7
+estimated_tokens: 14000
+
+persona:
+  role: "Tech lead, 7 years experience, promoted from senior engineer 6 months ago"
+  communication_style: "thoughtful and collaborative, often presents their own analysis before asking for input, writes longer messages with clear structure, uses 'we' instead of 'I'"
+  quirks:
+    - "references team members by name when discussing constraints ('Sarah thinks...')"
+    - "uses 'tbh' when being candid about concerns"
+    - "sometimes sends a follow-up message seconds after the first with 'oh also' or 'one more thing'"
+  context: "E-commerce marketplace in Seoul, 120-person eng team (12 backend), Django monolith serving 500K daily active users, expanding to Japan"
+
+sessions:
+  - id: s1
+    day: 1
+    user_request: "Our Django monolith has grown to 180K lines of code, 47 Django apps, and deploys take 25 minutes. The team (12 engineers) is stepping on each other. Help me plan a microservices migration."
+    conversation_topics:
+      - Monolith pain points analysis
+      - Strangler fig pattern
+      - Domain boundary identification
+    discoveries:
+      - finding: "47 Django apps but only 6 true domain boundaries"
+        detail: "Most apps are utility modules, not domains. The 6 real domains: auth/users, orders/payments, inventory, notifications, analytics, content/CMS. The other 41 apps are shared utilities (helpers, middleware, decorators) that should become shared libraries."
+      - finding: "Deploy bottleneck is test suite, not build"
+        detail: "Build takes 3 minutes. Full test suite takes 22 minutes — 4,800 tests with heavy database fixture setup. If services were independent, each would have ~800 tests running in 4 minutes."
+    decisions:
+      - choice: "Strangler fig pattern — extract services one at a time, keep monolith running"
+        reasoning: "Big-bang rewrite is too risky with 12 engineers. Strangler fig lets us extract one domain at a time while the monolith continues serving traffic. Each extraction is a bounded effort that can be rolled back independently."
+        alternatives_considered: ["Big-bang rewrite", "Branch by abstraction", "Keep monolith but modularize"]
+    artifacts:
+      - type: document
+        description: "Domain boundary analysis"
+        key_facts:
+          - "6 domains identified: auth (14 apps → 1 service), orders (8 apps → 1 service), inventory (5 apps → 1 service), notifications (4 apps → 1 service), analytics (3 apps → 1 service), content (4 apps → 1 service)"
+          - "Shared utilities (41 apps → 1 shared library package)"
+          - "Biggest coupling: orders ↔ inventory (38 direct imports), orders ↔ auth (22 direct imports)"
+          - "Least coupled: notifications (only consumes events, produces nothing), analytics (read-only from all domains)"
+          - "Recommended extraction order: notifications → analytics → content → inventory → orders → auth (least coupled first)"
+    entities: ["Django", "PostgreSQL"]
+
+  - id: s2
+    day: 4
+    user_request: "Let's design the service communication. We currently have direct function calls between Django apps. How do services talk to each other?"
+    conversation_topics:
+      - Sync vs async communication
+      - Event-driven architecture
+      - API gateway patterns
+    decisions:
+      - choice: "Event-driven with RabbitMQ for async, gRPC for sync queries, API gateway for external traffic"
+        reasoning: "Most inter-service communication is event-driven (order placed → notify, order placed → update inventory). gRPC for the ~20% of calls that need synchronous responses (check inventory before placing order). REST API gateway for external clients — they shouldn't know about internal service topology."
+        alternatives_considered: ["REST everywhere (chatty, tight coupling)", "Kafka (overkill for our scale)", "Service mesh (too much infra complexity for 6 services)"]
+      - choice: "Shared PostgreSQL initially, split databases later"
+        reasoning: "Extracting code and database at the same time doubles the risk. Phase 1: extract service code but share the database with schema-level isolation. Phase 2: migrate each service to its own database once the service boundaries are proven."
+    artifacts:
+      - type: document
+        description: "Service communication architecture"
+        key_facts:
+          - "Events (async): RabbitMQ with topic exchanges. Events: order.placed, order.shipped, user.registered, inventory.low_stock, payment.completed, payment.failed"
+          - "Queries (sync): gRPC with Protocol Buffers. Services: InventoryService.CheckStock, AuthService.ValidateToken, OrderService.GetOrderStatus"
+          - "External API: REST via Kong API Gateway. Routes: /api/v1/orders → order-service, /api/v1/users → auth-service, etc."
+          - "Schema isolation: each service owns tables prefixed with its domain (orders_, inventory_, auth_) — no cross-domain direct table access"
+          - "Event schema registry: all events defined in a shared protobuf package, versioned with backward compatibility rules"
+    builds_on: [s1]
+    entities: ["RabbitMQ", "gRPC", "Kong", "Protocol Buffers"]
+
+  - id: s3
+    day: 7
+    user_request: "Sarah (senior engineer, 5 years on the codebase) pushes back. She says microservices will make debugging harder, add network latency, and we don't have the DevOps maturity. How do we address her concerns?"
+    conversation_topics:
+      - Distributed tracing
+      - Operational complexity trade-offs
+      - Team capability assessment
+    decisions:
+      - choice: "Address each concern with concrete mitigation, and agree to start with just 2 services (notifications + analytics)"
+        reasoning: "Sarah's concerns are valid. Starting with 2 low-risk services proves the pattern before committing fully. Notifications and analytics are the least coupled — if microservices cause problems, we learn cheaply."
+    artifacts:
+      - type: document
+        description: "Concerns and mitigations document (shared with Sarah)"
+        key_facts:
+          - "Concern 1 — Debugging: implement distributed tracing with Jaeger, correlation IDs in all requests/events, centralized logging with ELK stack"
+          - "Concern 2 — Latency: gRPC adds ~2ms per hop (vs 0ms for function calls). For order flow with 3 hops, total added latency is ~6ms. Acceptable for our P95 target of <500ms"
+          - "Concern 3 — DevOps maturity: start with 2 simple services. Use the same CI/CD pipeline (GitHub Actions) already in place. No Kubernetes — use ECS Fargate for simple container deployment"
+          - "Concern 4 (unstated) — Job security: monolith knowledge is still critical for the 2+ year transition. Sarah's deep codebase knowledge makes her the ideal extraction lead"
+          - "Agreement: extract notifications and analytics first. Evaluate after 2 months. If operational overhead is too high, stop and reassess"
+          - "Success criteria: deploy time <5 min per service, no increase in production incidents, team velocity not decreased"
+    builds_on: [s1, s2]
+    entities: ["Jaeger", "ELK", "ECS Fargate"]
+
+  - id: s4
+    day: 10
+    user_request: "Let's design the first extraction — notification service. It currently handles email, SMS, push notifications, and in-app notifications."
+    conversation_topics:
+      - Notification service boundaries
+      - Event consumption patterns
+      - Template management
+    artifacts:
+      - type: code
+        description: "Notification service design"
+        key_facts:
+          - "Tech stack: FastAPI (not Django — lighter weight for event consumer), Python 3.12"
+          - "Consumes events: order.placed, order.shipped, payment.failed, user.registered, inventory.low_stock"
+          - "Channels: email (SendGrid), SMS (Twilio), push (Firebase FCM), in-app (WebSocket)"
+          - "Template engine: Jinja2 templates stored in service repo, not in database"
+          - "User preferences: pull from auth-service via gRPC on startup, cache for 5 minutes"
+          - "Delivery guarantee: at-least-once via RabbitMQ acknowledgment, deduplication by event_id + channel"
+          - "Dead letter queue for failed deliveries, retry 3 times with exponential backoff"
+          - "Database: own PostgreSQL schema with tables: notification_log, delivery_attempts, user_preferences_cache"
+      - type: code
+        description: "Migration script to extract notification data"
+        key_facts:
+          - "Copies notification_templates, notification_logs from monolith to new service DB"
+          - "Dual-write period: monolith publishes events, both old and new notification code runs"
+          - "Comparison mode: new service logs what it WOULD send, compared against what monolith actually sends"
+          - "Switchover: once comparison shows 100% parity for 1 week, disable monolith notifications"
+    builds_on: [s1, s2, s3]
+    entities: ["FastAPI", "SendGrid", "Twilio", "Firebase FCM", "RabbitMQ"]
+
+  - id: s5
+    day: 14
+    user_request: "Notification service is live and working! Now plan the analytics extraction. This one's trickier — analytics reads from almost every table."
+    conversation_topics:
+      - Read replica patterns
+      - Event sourcing for analytics
+      - CDC for analytics data
+    decisions:
+      - choice: "Analytics service consumes events + CDC stream, builds its own read-optimized store"
+        reasoning: "Analytics shouldn't query production tables directly — it causes lock contention. Instead, analytics consumes domain events (order.placed, user.registered) and a CDC stream from the monolith's database. It builds its own denormalized tables optimized for analytical queries."
+      - choice: "Use ClickHouse for analytics storage"
+        reasoning: "PostgreSQL struggles with our analytical queries (aggregations over millions of rows). ClickHouse is columnar, handles time-series aggregations 10-100x faster, and the analytics workload is pure read-append."
+    artifacts:
+      - type: document
+        description: "Analytics service architecture"
+        key_facts:
+          - "Data sources: domain events from RabbitMQ + CDC stream from PostgreSQL (using Debezium)"
+          - "Storage: ClickHouse for analytical queries, PostgreSQL for service metadata"
+          - "Key tables: events_raw (append-only, all domain events), daily_metrics (pre-aggregated DAU, orders, revenue), cohort_retention, funnel_stages"
+          - "Query layer: FastAPI with pre-defined report endpoints, no ad-hoc SQL from clients"
+          - "Caching: Redis for frequently accessed dashboards (TTL 5 minutes)"
+          - "Backfill: one-time historical data load from monolith via pg_dump → transform → ClickHouse bulk insert"
+          - "Estimated storage: 50GB/year in ClickHouse (vs 200GB in PostgreSQL for same data, due to columnar compression)"
+    builds_on: [s1, s4]
+    entities: ["ClickHouse", "Debezium", "RabbitMQ"]
+
+  - id: s6
+    day: 18
+    user_request: "Create a full migration roadmap I can present to the VP of Engineering. Include timeline, staffing, and risks."
+    artifacts:
+      - type: document
+        description: "Migration roadmap"
+        key_facts:
+          - "Total timeline: 18 months for full decomposition"
+          - "Phase 1 (Months 1-3): Notifications service extraction — 2 engineers, low risk, completed"
+          - "Phase 2 (Months 3-5): Analytics service extraction — 2 engineers, medium risk (data migration)"
+          - "Phase 3 (Months 5-8): Content/CMS extraction — 3 engineers, medium risk (user-facing)"
+          - "Phase 4 (Months 8-11): Inventory service extraction — 3 engineers, high risk (orders coupling)"
+          - "Phase 5 (Months 11-15): Orders/payments extraction — 4 engineers, highest risk (payment processing, regulatory)"
+          - "Phase 6 (Months 15-18): Auth service extraction — 3 engineers, high risk (everything depends on auth)"
+          - "Total staffing: 4 engineers dedicated (rotating), 2 shared infrastructure engineers"
+          - "Risk: timeline assumes no major feature development freezes. Realistically, expect 20-30% schedule slip"
+          - "Key milestones: Month 3 go/no-go decision, Month 8 mid-point review, Month 15 final extraction approval"
+    builds_on: [s1, s3, s4, s5]
+
+  - id: s7
+    day: 21
+    user_request: "Write the RFC so the whole engineering team can review and comment. Include the technical details but make it accessible to junior engineers too."
+    artifacts:
+      - type: document
+        description: "RFC: Monolith Decomposition"
+        key_facts:
+          - "RFC number: RFC-2026-003"
+          - "Title: Decomposing the Django Monolith into Domain Services"
+          - "Status: Draft, open for comments until March 7"
+          - "Sections: Problem Statement, Proposed Solution, Architecture, Migration Strategy, Alternatives Considered, FAQ"
+          - "Problem Statement: deploy time 25 min, team conflicts, blast radius of any change is entire app"
+          - "Proposed Solution: strangler fig extraction of 6 domain services over 18 months"
+          - "FAQ covers: Why not Kubernetes? (too complex for 6 services, ECS Fargate is simpler), Why not rewrite in Go? (team expertise is Python, migration already risky enough), What about my Django app? (shared utilities become a pip package)"
+          - "Includes architecture diagram showing monolith → services transition with dual-write period"
+          - "Glossary section explaining: strangler fig, CDC, event sourcing, gRPC, dead letter queue — for junior engineers"
+    builds_on: [s1, s2, s3, s4, s5, s6]
+
+qa_pairs:
+  - question: "How many Django apps are in the monolith and how many true domain boundaries exist?"
+    answer: "47 Django apps but only 6 true domain boundaries: auth/users, orders/payments, inventory, notifications, analytics, and content/CMS. The other 41 apps are shared utilities."
+    evidence_sessions: [s1]
+    type: discovery_recall
+    difficulty: single-hop
+
+  - question: "What migration pattern was chosen and why?"
+    answer: "Strangler fig pattern — extract services one at a time while keeping the monolith running. Big-bang rewrite was too risky with 12 engineers. Each extraction is bounded and can be rolled back independently."
+    evidence_sessions: [s1]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What is the recommended service extraction order?"
+    answer: "Notifications → analytics → content → inventory → orders → auth (least coupled to most coupled)"
+    evidence_sessions: [s1]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What communication protocols are used between services?"
+    answer: "Event-driven with RabbitMQ for async communication (~80% of calls), gRPC for synchronous queries (~20%), and REST via Kong API Gateway for external clients."
+    evidence_sessions: [s2]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "How were Sarah's concerns about microservices addressed?"
+    answer: "Debugging: distributed tracing with Jaeger and centralized logging with ELK. Latency: gRPC adds ~2ms per hop, total ~6ms for 3-hop flows (within P95 target of <500ms). DevOps maturity: start with just 2 low-risk services (notifications + analytics), evaluate after 2 months."
+    evidence_sessions: [s3]
+    type: cross_session
+    difficulty: multi-hop
+
+  - question: "Why was Kafka not chosen for event communication?"
+    answer: "Kafka was considered overkill for the scale. RabbitMQ with topic exchanges was chosen instead."
+    evidence_sessions: [s2]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "How does the notification service ensure delivery guarantees?"
+    answer: "At-least-once delivery via RabbitMQ acknowledgment, deduplication by event_id + channel, dead letter queue for failed deliveries with 3 retries using exponential backoff."
+    evidence_sessions: [s4]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "Why was ClickHouse chosen for the analytics service?"
+    answer: "PostgreSQL struggles with analytical queries (aggregations over millions of rows). ClickHouse is columnar, handles time-series aggregations 10-100x faster, and the analytics workload is pure read-append. Storage is also 4x more efficient (50GB/year vs 200GB in PostgreSQL due to columnar compression)."
+    evidence_sessions: [s5]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "What is the total migration timeline and staffing requirement?"
+    answer: "18 months for full decomposition. 4 engineers dedicated (rotating) plus 2 shared infrastructure engineers. Expect 20-30% schedule slip."
+    evidence_sessions: [s6]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What was the notification service migration strategy to ensure zero disruption?"
+    answer: "Dual-write period where both old and new code runs. New service logs what it WOULD send, compared against what monolith actually sends. Switchover happens once comparison shows 100% parity for 1 week."
+    evidence_sessions: [s4]
+    type: artifact_content
+    difficulty: detail
+
+  - question: "What is the RFC number and when is the comment deadline?"
+    answer: "RFC-2026-003, open for comments until March 7"
+    evidence_sessions: [s7]
+    type: fact_recall
+    difficulty: single-hop
+
+  - question: "What database strategy was chosen for the initial migration phase?"
+    answer: "Shared PostgreSQL initially with schema-level isolation (tables prefixed by domain like orders_, inventory_, auth_). Database split to per-service databases happens in a later phase once service boundaries are proven."
+    evidence_sessions: [s2]
+    type: decision_reasoning
+    difficulty: single-hop
+
+  - question: "How does the analytics service get data from the monolith?"
+    answer: "Two sources: domain events from RabbitMQ (order.placed, user.registered, etc.) and a CDC stream from PostgreSQL using Debezium. Historical data is backfilled via pg_dump → transform → ClickHouse bulk insert."
+    evidence_sessions: [s5]
+    type: artifact_content
+    difficulty: multi-hop
+
+  - question: "What causes the 25-minute deploy time?"
+    answer: "The test suite, not the build. Build takes 3 minutes, but the full test suite takes 22 minutes — 4,800 tests with heavy database fixture setup."
+    evidence_sessions: [s1]
+    type: discovery_recall
+    difficulty: single-hop
