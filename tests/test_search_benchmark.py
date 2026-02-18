@@ -230,7 +230,7 @@ async def test_benchmark_fts_file_search(bench_session_factory, seeded_data):
     for query in SEARCH_QUERIES:
         async with bench_session_factory() as session:
             t0 = time.perf_counter()
-            results = await search_files_fts(session, ORG_ID, WS_ID, query, DB_URL)
+            results = await search_files_fts(session, ORG_ID, WS_ID, query)
             elapsed = time.perf_counter() - t0
             times.append(elapsed)
             total_results += len(results)
@@ -302,7 +302,7 @@ async def test_benchmark_fts_chunk_search(bench_session_factory, seeded_data):
         async with bench_session_factory() as session:
             t0 = time.perf_counter()
             results = await search_chunks_fts(
-                session, ORG_ID, WS_ID, query, DB_URL
+                session, ORG_ID, WS_ID, query
             )
             elapsed = time.perf_counter() - t0
             times.append(elapsed)
@@ -336,7 +336,7 @@ async def test_benchmark_comparison_summary(bench_session_factory, seeded_data):
     for q in SEARCH_QUERIES:
         async with bench_session_factory() as session:
             t0 = time.perf_counter()
-            await search_files_fts(session, ORG_ID, WS_ID, q, DB_URL)
+            await search_files_fts(session, ORG_ID, WS_ID, q)
             fts_times.append(time.perf_counter() - t0)
     results_table["FTS5 file search"] = sum(fts_times) / len(fts_times)
 
@@ -354,7 +354,7 @@ async def test_benchmark_comparison_summary(bench_session_factory, seeded_data):
     for q in SEARCH_QUERIES:
         async with bench_session_factory() as session:
             t0 = time.perf_counter()
-            await search_chunks_fts(session, ORG_ID, WS_ID, q, DB_URL)
+            await search_chunks_fts(session, ORG_ID, WS_ID, q)
             fts_chunk_times.append(time.perf_counter() - t0)
     results_table["FTS5 chunk search"] = sum(fts_chunk_times) / len(fts_chunk_times)
 
@@ -397,12 +397,12 @@ async def test_fts_ranking_quality(bench_session_factory, seeded_data):
     """Verify FTS returns relevant results ranked higher than tangential ones."""
     async with bench_session_factory() as session:
         results = await search_files_fts(
-            session, ORG_ID, WS_ID, "performance optimization", DB_URL
+            session, ORG_ID, WS_ID, "performance optimization"
         )
         assert len(results) > 0
 
         # The top results should be files whose path contains "performance-optimization"
-        top_paths = [f.path for f, _score in results[:10]]
+        top_paths = [f.path for f in results[:10]]
         perf_count = sum(1 for p in top_paths if "performance-optimization" in p)
         # At least some top results should be from the performance-optimization folder
         assert perf_count > 0, (

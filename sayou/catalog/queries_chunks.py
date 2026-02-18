@@ -238,11 +238,20 @@ async def search_chunks(
     from sayou.catalog.models import SayouFile
     from sayou.catalog.queries import glob_to_regex, glob_to_sql
 
-    pattern = f"%{query}%"
+    # For multi-word queries, split into terms and match ANY (OR logic)
+    from sqlalchemy import or_
+    terms = query.split()
+    if len(terms) <= 1:
+        terms = [query]
+    term_conditions = []
+    for term in terms:
+        if term.strip():
+            term_conditions.append(SayouChunk.content.like(f"%{term.strip()}%"))
+
     conditions = [
         SayouChunk.org_id == org_id,
         SayouChunk.workspace_id == workspace_id,
-        SayouChunk.content.like(pattern),
+        or_(*term_conditions) if term_conditions else SayouChunk.content.like(f"%{query}%"),
         SayouFile.id == SayouChunk.file_id,
         SayouFile.deleted_at.is_(None),
     ]
