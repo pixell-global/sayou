@@ -585,13 +585,20 @@ class WorkspaceService:
             if query:
                 # Try ranked full-text search, fall back to LIKE
                 # SQLite FTS5 → MySQL FULLTEXT → LIKE
+                # Also fall back when FTS returns empty (e.g. CJK text
+                # that unicode61 tokenizer can't segment)
+                ft_results = []
                 try:
                     ft_results = await search_files_fts(session, org_id, ws.id, query)
                 except Exception:
+                    pass
+                if not ft_results:
                     try:
                         ft_results = await search_files_mysql_fts(session, org_id, ws.id, query)
                     except Exception:
-                        ft_results = await search_files_fulltext(session, org_id, ws.id, query)
+                        pass
+                if not ft_results:
+                    ft_results = await search_files_fulltext(session, org_id, ws.id, query)
                 if results is not None:
                     # Intersection
                     results = [f for f in ft_results if f.id in fm_ids]
@@ -1026,22 +1033,28 @@ class WorkspaceService:
 
             # Try ranked full-text search, fall back to LIKE
             # SQLite FTS5 → MySQL FULLTEXT → LIKE
+            # Also fall back when FTS returns empty (e.g. CJK text)
+            results = []
             try:
                 results = await search_chunks_fts_query(
                     session, org_id, ws.id, query,
                     path_pattern=path_pattern, limit=limit,
                 )
             except Exception:
+                pass
+            if not results:
                 try:
                     results = await search_chunks_mysql_fts_query(
                         session, org_id, ws.id, query,
                         path_pattern=path_pattern, limit=limit,
                     )
                 except Exception:
-                    results = await search_chunks_query(
-                        session, org_id, ws.id, query,
-                        path_pattern=path_pattern, limit=limit,
-                    )
+                    pass
+            if not results:
+                results = await search_chunks_query(
+                    session, org_id, ws.id, query,
+                    path_pattern=path_pattern, limit=limit,
+                )
 
             result_list = [
                 {

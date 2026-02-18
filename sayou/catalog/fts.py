@@ -2,6 +2,9 @@
 
 Creates FTS5 virtual tables (SQLite) or FULLTEXT indexes (MySQL) for
 ranked text search on files and chunks.  Safe to call multiple times.
+
+Uses the `trigram` tokenizer for universal language support, including
+CJK (Chinese/Japanese/Korean) text that has no word-separating spaces.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ def is_sqlite(db_url: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# SQLite FTS5
+# SQLite FTS5 (trigram tokenizer for CJK support)
 # ---------------------------------------------------------------------------
 
 _FILES_FTS_DDL = """
@@ -30,7 +33,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS sayou_files_fts USING fts5(
     workspace_id UNINDEXED,
     path,
     content_text,
-    frontmatter
+    frontmatter,
+    tokenize="trigram"
 );
 """
 
@@ -40,7 +44,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS sayou_chunks_fts USING fts5(
     org_id UNINDEXED,
     workspace_id UNINDEXED,
     file_id UNINDEXED,
-    content
+    content,
+    tokenize="trigram"
 );
 """
 
@@ -113,8 +118,41 @@ WHERE id NOT IN (SELECT chunk_id FROM sayou_chunks_fts);
 """
 
 
+async def _needs_fts_rebuild(engine: AsyncEngine) -> bool:
+    """Check if existing FTS tables use the old unicode61 tokenizer."""
+    async with engine.begin() as conn:
+        result = await conn.execute(text(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='sayou_files_fts'"
+        ))
+        row = result.scalar()
+        if row is None:
+            return False  # Table doesn't exist yet, no rebuild needed
+        # If the DDL doesn't mention trigram, it's the old tokenizer
+        return "trigram" not in row.lower()
+
+
+async def _rebuild_sqlite_fts(engine: AsyncEngine) -> None:
+    """Drop old FTS tables/triggers and recreate with trigram tokenizer."""
+    logger.info("Rebuilding FTS5 tables with trigram tokenizer for CJK support")
+    async with engine.begin() as conn:
+        # Drop triggers first
+        for trigger in (
+            "sayou_files_fts_ai", "sayou_files_fts_au", "sayou_files_fts_ad",
+            "sayou_chunks_fts_ai", "sayou_chunks_fts_au", "sayou_chunks_fts_ad",
+        ):
+            await conn.execute(text(f"DROP TRIGGER IF EXISTS {trigger}"))
+        # Drop old FTS tables
+        await conn.execute(text("DROP TABLE IF EXISTS sayou_files_fts"))
+        await conn.execute(text("DROP TABLE IF EXISTS sayou_chunks_fts"))
+
+
 async def _create_sqlite_fts(engine: AsyncEngine) -> None:
     """Create FTS5 virtual tables, triggers, and backfill existing data."""
+    # Check if existing tables need rebuild (old tokenizer → trigram)
+    if await _needs_fts_rebuild(engine):
+        await _rebuild_sqlite_fts(engine)
+
     async with engine.begin() as conn:
         # Virtual tables
         await conn.execute(text(_FILES_FTS_DDL))
@@ -176,6 +214,7 @@ async def create_fts_tables(engine: AsyncEngine, db_url: str) -> None:
     """Create FTS infrastructure for the given database.
 
     Safe to call multiple times — uses IF NOT EXISTS / existence checks.
+    Automatically rebuilds FTS tables if the tokenizer needs upgrading.
     """
     if is_sqlite(db_url):
         await _create_sqlite_fts(engine)

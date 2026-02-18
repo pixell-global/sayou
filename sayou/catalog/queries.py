@@ -503,19 +503,39 @@ async def search_files_mysql_fts(
 async def search_files_fulltext(
     session: AsyncSession, org_id: str, workspace_id: str, query: str
 ) -> list[SayouFile]:
-    """Fallback search using LIKE (no ranking, works on all databases)."""
-    pattern = f"%{query}%"
+    """Fallback search using LIKE (no ranking, works on all databases).
+
+    For multi-word queries, splits into individual terms and matches files
+    containing ANY term (OR logic). This handles CJK queries where the
+    exact multi-word phrase may not appear as a contiguous substring.
+    """
+    terms = query.split()
+    if len(terms) <= 1:
+        terms = [query]
+
+    # Build OR conditions: file matches if ANY term appears in path/content/frontmatter
+    from sqlalchemy import or_
+    term_conditions = []
+    for term in terms:
+        if not term.strip():
+            continue
+        pattern = f"%{term.strip()}%"
+        term_conditions.append(
+            SayouFile.path.like(pattern)
+            | SayouFile.frontmatter.like(pattern)
+            | SayouFile.content_text.like(pattern)
+        )
+
+    if not term_conditions:
+        return []
+
     result = await session.execute(
         select(SayouFile).where(
             and_(
                 SayouFile.org_id == org_id,
                 SayouFile.workspace_id == workspace_id,
                 SayouFile.deleted_at.is_(None),
-                (
-                    SayouFile.path.like(pattern)
-                    | SayouFile.frontmatter.like(pattern)
-                    | SayouFile.content_text.like(pattern)
-                ),
+                or_(*term_conditions),
             )
         )
     )
