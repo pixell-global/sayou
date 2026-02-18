@@ -244,7 +244,7 @@ The agent runs on `http://localhost:9008` with a streaming SSE endpoint at `POST
 | **Store knowledge** | Writes files with YAML frontmatter, section headings, source citations |
 | **Execute code** | Optional E2B sandbox for Python and bash (set `SAYOU_AGENT_E2B_API_KEY`) |
 
-### Run benchmarks
+### Evaluate the agent
 
 ```bash
 # Start agent in one terminal
@@ -270,6 +270,66 @@ Client → FastAPI (port 9008)
          │  └─ execute_bash/python (→ E2B sandbox, optional)
          └─ SandboxManager (per-session isolation, auto-cleanup)
 ```
+
+## SAMB: Structured Agent Memory Benchmark
+
+sayou includes SAMB — an open benchmark for evaluating memory systems on real agentic workflows. Existing benchmarks (LOCOMO, LongMemEval, DMR) test conversation recall. SAMB tests what agents actually need: recalling decisions, retrieving artifact contents, and connecting knowledge across sessions.
+
+### What SAMB measures
+
+| Dimension | What it tests |
+|-----------|---------------|
+| **Decision reasoning** | "Why was bcrypt chosen over Argon2?" |
+| **Artifact content** | "What endpoints are in the API docs?" |
+| **Cross-session** | "How does session 3's auth decision affect session 5's implementation?" |
+| **Fact recall** | "What was the monthly GCP cost estimate?" |
+| **Temporal** | "What changed between the first and second architecture review?" |
+
+10 scenarios, 62 sessions, 131 QA pairs across 7 question types. Each scenario simulates a multi-session professional project (auth system design, cloud migration, email campaigns, incident response, etc.) with realistic conversations, decisions, and artifacts.
+
+### Run the benchmark
+
+```bash
+# Prerequisites: pip install sayou mem0ai zep-cloud
+# Requires: OPENAI_API_KEY (for judge/answer models)
+#           ZEP_API_KEY (for zep adapter)
+
+# Run all adapters on all scenarios
+python -m benchmarks.runner.cli
+
+# Specific adapters
+python -m benchmarks.runner.cli --adapter sayou mem0
+
+# Specific scenarios
+python -m benchmarks.runner.cli --adapter sayou --scenario 01 03 08
+
+# Verbose output (per-question scores)
+python -m benchmarks.runner.cli --verbose
+
+# Override judge/answer models
+python -m benchmarks.runner.cli --judge-model gpt-4o --answer-model gpt-4o
+```
+
+Results are saved to `benchmarks/results/` as JSON with full per-question breakdowns.
+
+### Available adapters
+
+| Adapter | System | Retrieval approach |
+|---------|--------|-------------------|
+| `sayou` | sayou workspace | FTS5 + grep + file read (agentic, multi-tool) |
+| `mem0` | mem0 | LLM fact extraction + embedding search (agentic) |
+| `zep` | Zep Cloud | Knowledge graph + temporal edges (agentic) |
+| `oracle` | Baseline | Direct access to source sessions (upper bound) |
+| `no_memory` | Baseline | No retrieval (lower bound) |
+
+### Methodology
+
+Each adapter uses agentic retrieval — an LLM generates multiple search queries rather than a single-shot lookup. This gives every system a fair chance at finding relevant information.
+
+Scoring: LLM-judged (gpt-4o-mini) on a 0–3 scale, normalized to percentage. Task-type questions add holistic scoring (1–5) and evidence coverage (per-item FOUND/MISSING). Statistical significance via bootstrap confidence intervals with Bonferroni correction.
+
+Full methodology: [`benchmarks/dataset/METHODOLOGY.md`](benchmarks/dataset/METHODOLOGY.md)
+Dataset card: [`benchmarks/dataset/DATASET_CARD.md`](benchmarks/dataset/DATASET_CARD.md)
 
 ## Installation Options
 
