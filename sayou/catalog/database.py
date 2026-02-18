@@ -80,6 +80,11 @@ async def init_db(url: str | None = None):
         from sayou.catalog.models import Base
         async with _engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+
+        # Create FTS5 virtual tables and triggers
+        from sayou.catalog.fts import create_fts_tables
+        await create_fts_tables(_engine, db_url)
+
         # Stamp alembic version so future migrations know where we are
         await asyncio.to_thread(_stamp_alembic_head, db_url)
 

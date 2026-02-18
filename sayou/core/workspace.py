@@ -13,6 +13,7 @@ from sayou.catalog.queries import (
     duplicate_file,
     ensure_default_workspace,
     get_file_by_path,
+    get_file_by_path_including_deleted,
     get_file_versions,
     get_index_cache,
     get_subfolder_stats,
@@ -30,7 +31,9 @@ from sayou.catalog.queries import (
     query_mutation_log,
     search_files_by_frontmatter,
     search_files_content,
+    search_files_fts,
     search_files_fulltext,
+    search_files_mysql_fts,
     soft_delete_file,
     update_file_current_version,
     update_file_path,
@@ -64,6 +67,8 @@ from sayou.catalog.queries_chunks import (
     get_chunks_for_file,
     replace_chunks_for_file,
     search_chunks as search_chunks_query,
+    search_chunks_fts as search_chunks_fts_query,
+    search_chunks_mysql_fts as search_chunks_mysql_fts_query,
 )
 from sayou.core.auto_metadata import (
     NullMetadataProvider,
@@ -250,15 +255,30 @@ class WorkspaceService:
                 content_bytes, org_id, ws.id, version_id, content_type=content_type
             )
 
-            # Get or create file record
+            # Get or create file record (check for soft-deleted files first)
             file = await get_file_by_path(session, org_id, ws.id, clean_path)
             if file is None:
-                file = await create_file(
-                    session, org_id, ws.id, clean_path, folder_path, filename,
-                    content_type=content_type,
-                    frontmatter=frontmatter or None,
-                    content_text=body or None,
+                # Check if a soft-deleted file exists at this path
+                deleted_file = await get_file_by_path_including_deleted(
+                    session, org_id, ws.id, clean_path
                 )
+                if deleted_file is not None:
+                    # Restore the soft-deleted file
+                    deleted_file.deleted_at = None
+                    deleted_file.content_type = content_type
+                    if frontmatter:
+                        deleted_file.frontmatter = json.dumps(frontmatter)
+                    if body is not None:
+                        deleted_file.content_text = body
+                    await session.flush()
+                    file = deleted_file
+                else:
+                    file = await create_file(
+                        session, org_id, ws.id, clean_path, folder_path, filename,
+                        content_type=content_type,
+                        frontmatter=frontmatter or None,
+                        content_text=body or None,
+                    )
 
             # Create version
             new_version_number = file.version_count + 1
@@ -563,7 +583,15 @@ class WorkspaceService:
                 results = fm_results
 
             if query:
-                ft_results = await search_files_fulltext(session, org_id, ws.id, query)
+                # Try ranked full-text search, fall back to LIKE
+                # SQLite FTS5 → MySQL FULLTEXT → LIKE
+                try:
+                    ft_results = await search_files_fts(session, org_id, ws.id, query)
+                except Exception:
+                    try:
+                        ft_results = await search_files_mysql_fts(session, org_id, ws.id, query)
+                    except Exception:
+                        ft_results = await search_files_fulltext(session, org_id, ws.id, query)
                 if results is not None:
                     # Intersection
                     results = [f for f in ft_results if f.id in fm_ids]
@@ -996,10 +1024,24 @@ class WorkspaceService:
             ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
             await self._check_role(session, ws.id, user_id, "reader")
 
-            results = await search_chunks_query(
-                session, org_id, ws.id, query,
-                path_pattern=path_pattern, limit=limit,
-            )
+            # Try ranked full-text search, fall back to LIKE
+            # SQLite FTS5 → MySQL FULLTEXT → LIKE
+            try:
+                results = await search_chunks_fts_query(
+                    session, org_id, ws.id, query,
+                    path_pattern=path_pattern, limit=limit,
+                )
+            except Exception:
+                try:
+                    results = await search_chunks_mysql_fts_query(
+                        session, org_id, ws.id, query,
+                        path_pattern=path_pattern, limit=limit,
+                    )
+                except Exception:
+                    results = await search_chunks_query(
+                        session, org_id, ws.id, query,
+                        path_pattern=path_pattern, limit=limit,
+                    )
 
             result_list = [
                 {

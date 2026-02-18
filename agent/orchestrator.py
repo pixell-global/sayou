@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator
 from datetime import date
@@ -10,6 +11,7 @@ from sayou.agent.config import AgentSettings
 from sayou.agent.loop.events import AgentEvent
 from sayou.agent.loop.llm_provider import LLMProvider
 from sayou.agent.loop.sayou_agent import SayouAgent
+from sayou.agent.observer import ConversationObserver
 from sayou.agent.sandbox.manager import SandboxManager
 from sayou.agent.tools.factory import ToolFactory
 
@@ -20,6 +22,13 @@ You are sayou-agent, a sharp and direct knowledge assistant. Today is {today}.
 
 You have tools: workspace (search, read, list, write) and web search.
 Be natural and direct — no filler phrases like "certainly!" or "great question!".
+
+## Directory structure
+
+Your workspace has three directories:
+- `artifacts/` — Your outputs: research docs, analysis, structured content. You write here.
+- `conversations/` — Automatically tracked by the system. Do NOT write here.
+- `profile/` — User preferences, automatically maintained. Do NOT write here.
 
 ## CRITICAL: Always search first, never ask where to look
 
@@ -49,7 +58,7 @@ Your job is to SEARCH and FIND. If it's in the workspace, you'll find it. If it'
 
 ## Storing content
 
-When storing conversations, notes, or research, follow this pattern strictly:
+When producing research, analysis, or structured outputs, write them as artifacts:
 
 1. Identify distinct topics in the content.
 2. Create section headings (## Topic Name) for each.
@@ -66,8 +75,14 @@ When storing conversations, notes, or research, follow this pattern strictly:
    source: web-research
    ---
    ```
-5. Path: observations/{{date}}-{{slug}}.md (e.g. observations/{today}-mcp-servers.md)
+5. Path: artifacts/{{date}}-{{slug}}.md (e.g. artifacts/{today}-mcp-servers.md)
 6. NEVER summarize. Organize and structure, preserving all detail and specifics.
+
+## Memory
+
+Conversation context is automatically saved. Your job: write artifacts to `artifacts/` \
+when you produce research or structured outputs. The system automatically tracks your \
+conversations and links artifacts to them.
 
 ## Researching topics
 
@@ -111,6 +126,12 @@ class Orchestrator:
         )
         self.agent = SayouAgent(self.llm, self.tool_factory)
 
+        self._observer: ConversationObserver | None = None
+        if settings.observer_available:
+            self._observer = ConversationObserver(
+                api_key=settings.openai_api_key, model=settings.observer_model
+            )
+
     def _build_system_prompt(self, context_path: str | None = None) -> str:
         today = date.today().isoformat()
         prompt = SYSTEM_PROMPT_TEMPLATE.format(today=today)
@@ -132,6 +153,9 @@ class Orchestrator:
         ws = Workspace(org_id=org_id, user_id=user_id, source="sayou-agent")
         await ws.open()
 
+        collected_events: list[dict] = []
+        artifact_paths: list[str] = []
+
         try:
             system_prompt = self._build_system_prompt(context_path)
             async for event in self.agent.run(
@@ -141,8 +165,35 @@ class Orchestrator:
                 workspace=ws,
                 system_prompt=system_prompt,
             ):
+                # Collect events for observer
+                collected_events.append({"type": event.type, "data": event.data})
+
+                # Track artifact writes (skip observer/profile directories)
+                if event.type == "tool_use" and event.data.get("name") == "workspace_write":
+                    try:
+                        args = json.loads(event.data.get("arguments", "{}"))
+                        path = args.get("path", "")
+                        if path and not path.startswith(("conversations/", "profile/")):
+                            artifact_paths.append(path)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
                 yield event
         finally:
+            # Run observer before closing workspace
+            if self._observer:
+                try:
+                    await self._observer.observe(
+                        workspace=ws,
+                        session_id=session_id,
+                        user_message=user_message,
+                        collected_events=collected_events,
+                        artifact_paths=artifact_paths,
+                        history=history,
+                    )
+                except Exception as e:
+                    logger.error(f"Observer error (non-fatal): {e}")
+
             await ws.close()
             if self.sandbox_manager:
                 await self.sandbox_manager.cleanup(session_id)

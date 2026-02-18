@@ -32,7 +32,11 @@ def _load_config_file() -> dict:
 
 
 class Settings(BaseSettings):
-    model_config = {"env_prefix": "SAYOU_", "env_file": str(_PROJECT_ROOT / ".env")}
+    model_config = {
+        "env_prefix": "SAYOU_",
+        "env_file": str(_PROJECT_ROOT / ".env"),
+        "extra": "ignore",
+    }
 
     # Database
     database_url: str = ""

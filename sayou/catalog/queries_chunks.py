@@ -73,6 +73,156 @@ async def get_chunk_by_index(
     return result.scalar_one_or_none()
 
 
+async def search_chunks_fts(
+    session: AsyncSession,
+    org_id: str,
+    workspace_id: str,
+    query: str,
+    path_pattern: str | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    """Search chunks using FTS5 MATCH with BM25 ranking (SQLite only).
+
+    Raises an exception if FTS5 tables are not available.
+    """
+    from sqlalchemy import text as sa_text
+    from sayou.catalog.models import SayouFile
+    from sayou.catalog.queries import glob_to_regex
+
+    fts_sql = sa_text(
+        "SELECT fts.chunk_id, fts.file_id, fts.rank "
+        "FROM sayou_chunks_fts fts "
+        "WHERE sayou_chunks_fts MATCH :query "
+        "AND fts.org_id = :org_id "
+        "AND fts.workspace_id = :ws_id "
+        "ORDER BY fts.rank "
+        "LIMIT :lim"
+    )
+    fts_result = await session.execute(
+        fts_sql,
+        {"query": query, "org_id": org_id, "ws_id": workspace_id, "lim": limit},
+    )
+    fts_rows = fts_result.all()
+
+    if not fts_rows:
+        return []
+
+    chunk_ids = [row[0] for row in fts_rows]
+    file_ids = list({row[1] for row in fts_rows})
+
+    # Fetch chunks
+    chunk_result = await session.execute(
+        select(SayouChunk).where(SayouChunk.id.in_(chunk_ids))
+    )
+    chunk_map = {c.id: c for c in chunk_result.scalars().all()}
+
+    # Fetch files for path info
+    file_result = await session.execute(
+        select(SayouFile).where(
+            and_(
+                SayouFile.id.in_(file_ids),
+                SayouFile.deleted_at.is_(None),
+            )
+        )
+    )
+    file_map = {f.id: f for f in file_result.scalars().all()}
+
+    # Build results in FTS5 rank order
+    results = []
+    for chunk_id, file_id, _rank in fts_rows:
+        chunk = chunk_map.get(chunk_id)
+        file = file_map.get(file_id)
+        if not chunk or not file:
+            continue
+        if path_pattern:
+            pat_re = glob_to_regex(path_pattern)
+            if not pat_re.match(file.path):
+                continue
+        results.append({
+            "chunk": chunk,
+            "path": file.path,
+            "filename": file.filename,
+        })
+
+    return results
+
+
+async def search_chunks_mysql_fts(
+    session: AsyncSession,
+    org_id: str,
+    workspace_id: str,
+    query: str,
+    path_pattern: str | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    """Search chunks using MySQL FULLTEXT MATCH with relevance ranking.
+
+    Requires ft_chunks_search FULLTEXT index on sayou_chunks.content.
+    Raises an exception if FULLTEXT index is not available.
+    """
+    from sqlalchemy import text as sa_text
+    from sayou.catalog.models import SayouFile
+    from sayou.catalog.queries import glob_to_regex
+
+    fts_sql = sa_text(
+        "SELECT c.id AS chunk_id, c.file_id, "
+        "MATCH(c.content) AGAINST(:query IN NATURAL LANGUAGE MODE) AS score "
+        "FROM sayou_chunks c "
+        "WHERE c.org_id = :org_id "
+        "AND c.workspace_id = :ws_id "
+        "AND MATCH(c.content) AGAINST(:query IN NATURAL LANGUAGE MODE) "
+        "ORDER BY score DESC "
+        "LIMIT :lim"
+    )
+    fts_result = await session.execute(
+        fts_sql,
+        {"query": query, "org_id": org_id, "ws_id": workspace_id, "lim": limit},
+    )
+    fts_rows = fts_result.all()
+
+    if not fts_rows:
+        return []
+
+    chunk_ids = [row[0] for row in fts_rows]
+    file_ids = list({row[1] for row in fts_rows})
+
+    # Fetch chunks
+    chunk_result = await session.execute(
+        select(SayouChunk).where(SayouChunk.id.in_(chunk_ids))
+    )
+    chunk_map = {c.id: c for c in chunk_result.scalars().all()}
+
+    # Fetch files for path info
+    file_result = await session.execute(
+        select(SayouFile).where(
+            and_(
+                SayouFile.id.in_(file_ids),
+                SayouFile.deleted_at.is_(None),
+            )
+        )
+    )
+    file_map = {f.id: f for f in file_result.scalars().all()}
+
+    # Build results in relevance order
+    results = []
+    for chunk_id, file_id, _score in fts_rows:
+        chunk = chunk_map.get(chunk_id)
+        file = file_map.get(file_id)
+        if not chunk or not file:
+            continue
+        if path_pattern:
+            pat_re = glob_to_regex(path_pattern)
+            if not pat_re.match(file.path):
+                continue
+        results.append({
+            "chunk": chunk,
+            "path": file.path,
+            "filename": file.filename,
+        })
+
+    return results
+
+
 async def search_chunks(
     session: AsyncSession,
     org_id: str,
