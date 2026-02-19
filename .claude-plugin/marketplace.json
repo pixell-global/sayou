@@ -9,7 +9,7 @@
     {
       "name": "sayou",
       "version": "0.2.1",
-      "source": "./plugin",
+      "source": ".",
       "description": "Persistent knowledge workspace — structured files, versioning, semantic search across sessions"
     }
   ]

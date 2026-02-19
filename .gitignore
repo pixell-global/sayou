@@ -42,9 +42,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# MCP config (contains API keys)
-.mcp.json
-!plugin/.mcp.json
+# Local MCP config overrides (contains API keys)
+.mcp.local.json
 
 # SQLite databases
 *.db
