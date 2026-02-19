@@ -138,7 +138,10 @@ def main():
     _add_common_args(kl)
 
     # ── init ─────────────────────────────────────────────────────
-    subparsers.add_parser("init", help="Initialize local sayou setup")
+    init_parser = subparsers.add_parser("init", help="Initialize local sayou setup")
+    init_parser.add_argument("--claude", action="store_true", help="Auto-configure Claude Code (~/.claude/mcp.json)")
+    init_parser.add_argument("--cursor", action="store_true", help="Auto-configure Cursor (.cursor/mcp.json)")
+    init_parser.add_argument("--windsurf", action="store_true", help="Auto-configure Windsurf (~/.codeium/windsurf/mcp_config.json)")
 
     # ── status ───────────────────────────────────────────────────
     subparsers.add_parser("status", help="Show sayou diagnostic status")
@@ -173,7 +176,12 @@ def main():
 
     if args.command == "init":
         from sayou.cli.init import run_init
-        asyncio.run(run_init())
+        editor = None
+        for name in ("claude", "cursor", "windsurf"):
+            if getattr(args, name, False):
+                editor = name
+                break
+        asyncio.run(run_init(editor=editor))
         return
 
     if args.command == "status":

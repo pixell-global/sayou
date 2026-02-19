@@ -16,35 +16,15 @@ Databases were designed for transactions — they reduce nuance to fit a schema.
 
 ## Quick Start
 
-### 1. Install
 ```bash
-pip install sayou
+pip install sayou && sayou init --claude
 ```
 
-### 2. Initialize
-```bash
-sayou init
-```
+That's it. Restart Claude Code and you're connected.
 
-### 3. Connect to Claude Code
+`--claude` auto-configures `~/.claude/mcp.json`. You can also use `--cursor` or `--windsurf`, or run `sayou init` without flags to get the config snippet to paste manually.
 
-Add to `~/.claude/mcp.json`:
-```json
-{
-  "mcpServers": {
-    "sayou": { "command": "sayou" }
-  }
-}
-```
-
-### 4. Verify
-
-Restart Claude Code (so it picks up the new MCP config), then run:
-```bash
-sayou status
-```
-
-You should see your workspace path, database location, and `11 tools registered`. If you see errors, jump to [Troubleshooting](#troubleshooting).
+To verify, run `sayou status` — you should see your workspace path, database location, and `11 tools registered`. If you see errors, jump to [Troubleshooting](#troubleshooting).
 
 ## Try It
 
@@ -113,29 +93,23 @@ The key insight: Claude Code remembered the research **across sessions** because
 
 ### Cursor
 
-Add to `.cursor/mcp.json` in your project root:
-```json
-{
-  "mcpServers": {
-    "sayou": { "command": "sayou" }
-  }
-}
+```bash
+sayou init --cursor
 ```
+
+This adds sayou to `.cursor/mcp.json` in your current working directory.
 
 ### Windsurf
 
-Add to `~/.codeium/windsurf/mcp_config.json`:
-```json
-{
-  "mcpServers": {
-    "sayou": { "command": "sayou" }
-  }
-}
+```bash
+sayou init --windsurf
 ```
+
+This adds sayou to `~/.codeium/windsurf/mcp_config.json`.
 
 ### Any MCP-compatible client
 
-sayou is a standard MCP server. The config is always the same — just `"command": "sayou"`. Check your editor's docs for where it reads MCP server configuration.
+sayou is a standard MCP server. Run `sayou init` (no flag) to get the config snippet, then paste it into your editor's MCP config. The entry is always the same — just `"command": "sayou"`.
 
 ## MCP Tools
 
