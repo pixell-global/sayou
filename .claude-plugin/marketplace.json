@@ -1,0 +1,16 @@
+{
+  "name": "pixell-global",
+  "owner": { "name": "Pixell" },
+  "metadata": {
+    "description": "Sayou — persistent knowledge workspace for AI agents",
+    "homepage": "https://github.com/pixell-global/sayou"
+  },
+  "plugins": [
+    {
+      "name": "sayou",
+      "version": "0.2.1",
+      "source": "./plugin",
+      "description": "Persistent knowledge workspace — structured files, versioning, semantic search across sessions"
+    }
+  ]
+}

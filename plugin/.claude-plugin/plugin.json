@@ -1,0 +1,9 @@
+{
+  "name": "sayou",
+  "version": "0.2.1",
+  "description": "Persistent knowledge workspace for Claude Code — structured files, versioning, search, and knowledge graph across sessions",
+  "author": { "name": "Pixell" },
+  "repository": "https://github.com/pixell-global/sayou",
+  "license": "Apache-2.0",
+  "keywords": ["workspace", "knowledge", "memory", "persistence", "versioning", "mcp"]
+}

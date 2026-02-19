@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sayou": {
+      "type": "stdio",
+      "command": "sayou"
+    }
+  }
+}

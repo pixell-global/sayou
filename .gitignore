@@ -44,6 +44,7 @@ Thumbs.db
 
 # MCP config (contains API keys)
 .mcp.json
+!plugin/.mcp.json
 
 # SQLite databases
 *.db

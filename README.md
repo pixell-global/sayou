@@ -16,15 +16,23 @@ Databases were designed for transactions — they reduce nuance to fit a schema.
 
 ## Quick Start
 
+### Claude Code (recommended)
+
+```bash
+claude plugin install sayou@pixell-global
+```
+
+One command. This installs the plugin with lifecycle hooks (workspace context on session start, passive activity capture, session summaries) and skills (`/ws`, `/save`, `/recall`). If `sayou` isn't installed yet, the plugin auto-installs it on first run.
+
+### pip install
+
 ```bash
 pip install sayou && sayou init --claude
 ```
 
-That's it. Restart Claude Code and you're connected.
+This installs sayou and configures `~/.claude/mcp.json`. You get the 11 MCP tools but no hooks or skills. You can also use `--cursor` or `--windsurf`, or run `sayou init` without flags to get the config snippet to paste manually.
 
-`--claude` auto-configures `~/.claude/mcp.json`. You can also use `--cursor` or `--windsurf`, or run `sayou init` without flags to get the config snippet to paste manually.
-
-To verify, run `sayou status` — you should see your workspace path, database location, and `11 tools registered`. If you see errors, jump to [Troubleshooting](#troubleshooting).
+To verify either method, run `sayou status` — you should see your workspace path, database location, and `11 tools registered`. If you see errors, jump to [Troubleshooting](#troubleshooting).
 
 ## Try It
 
