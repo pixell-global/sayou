@@ -302,6 +302,43 @@ async def test_cli_audit(ws_kwargs, capsys):
 
 
 @pytest.mark.asyncio
+async def test_init_configure_editor(tmp_path):
+    """sayou init --claude writes mcp.json correctly."""
+    from sayou.cli.init import _configure_editor, EDITOR_CONFIGS
+    from unittest.mock import patch
+
+    mcp_path = tmp_path / "mcp.json"
+
+    with patch.dict(EDITOR_CONFIGS, {"claude": mcp_path}):
+        # First call: creates file
+        _configure_editor("claude")
+        data = json.loads(mcp_path.read_text())
+        assert data == {"mcpServers": {"sayou": {"command": "sayou"}}}
+
+        # Second call: idempotent (doesn't duplicate)
+        _configure_editor("claude")
+        data = json.loads(mcp_path.read_text())
+        assert data == {"mcpServers": {"sayou": {"command": "sayou"}}}
+
+
+@pytest.mark.asyncio
+async def test_init_configure_editor_preserves_existing(tmp_path):
+    """sayou init --claude preserves existing MCP servers."""
+    from sayou.cli.init import _configure_editor, EDITOR_CONFIGS
+    from unittest.mock import patch
+
+    mcp_path = tmp_path / "mcp.json"
+    existing = {"mcpServers": {"other-server": {"command": "other"}}}
+    mcp_path.write_text(json.dumps(existing))
+
+    with patch.dict(EDITOR_CONFIGS, {"claude": mcp_path}):
+        _configure_editor("claude")
+        data = json.loads(mcp_path.read_text())
+        assert "other-server" in data["mcpServers"]
+        assert "sayou" in data["mcpServers"]
+
+
+@pytest.mark.asyncio
 async def test_cli_argparse_structure():
     """Verify argparse subparsers are structured correctly."""
     from sayou.__main__ import main
