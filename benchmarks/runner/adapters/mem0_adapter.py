@@ -15,8 +15,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 
 from benchmarks.runner.adapter import (
@@ -33,14 +34,25 @@ class Mem0Adapter(MemoryAdapter):
     Ingestion: m.add() feeds conversation messages through LLM fact extraction.
     Retrieval: Agentic LLM loop that tries multiple search queries to find
     all relevant memories.
+
+    All mem0 operations are pinned to a single thread via a dedicated
+    ThreadPoolExecutor. This is required because mem0 uses Qdrant with local
+    SQLite storage, and SQLite connections are thread-affine.
     """
 
     name = "mem0"
 
     def __init__(self):
         self._memory = None
-        self._tmpdir: tempfile.TemporaryDirectory | None = None
         self._config: dict | None = None
+        self._executor = ThreadPoolExecutor(max_workers=1)
+
+    async def _run(self, fn, *args, **kwargs):
+        """Run a sync function in the dedicated single-thread executor."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self._executor, partial(fn, *args, **kwargs)
+        )
 
     @classmethod
     def available(cls) -> bool:
@@ -53,9 +65,10 @@ class Mem0Adapter(MemoryAdapter):
     async def setup(self) -> None:
         api_key = _get_openai_key()
 
-        self._tmpdir = tempfile.TemporaryDirectory(prefix="samb_mem0_")
-        qdrant_path = str(Path(self._tmpdir.name) / "qdrant")
-
+        # Use Qdrant in-memory mode to avoid SQLite threading issues.
+        # mem0 internally spawns threads for memory processing, and SQLite
+        # connections are thread-affine. In-memory Qdrant uses RAM-based
+        # storage with no SQLite, sidestepping the issue entirely.
         self._config = {
             "llm": {
                 "provider": "openai",
@@ -75,13 +88,12 @@ class Mem0Adapter(MemoryAdapter):
                 "provider": "qdrant",
                 "config": {
                     "collection_name": "samb_bench",
-                    "path": qdrant_path,
                 },
             },
             "version": "v1.1",
         }
 
-        self._memory = await asyncio.to_thread(_create_memory, self._config)
+        self._memory = await self._run(_create_memory, self._config)
 
     async def ingest_session(self, scenario_id: str, session: SessionData) -> IngestMetrics:
         start = time.perf_counter()
@@ -97,8 +109,8 @@ class Mem0Adapter(MemoryAdapter):
 
         user_id = _user_id(scenario_id)
 
-        # mem0's add() is sync and uses internal threads — run in executor
-        await asyncio.to_thread(
+        # mem0's add() is sync — run in dedicated thread
+        await self._run(
             self._memory.add,
             messages,
             user_id=user_id,
@@ -125,6 +137,7 @@ class Mem0Adapter(MemoryAdapter):
             query=query,
             k=k,
             api_key=_get_openai_key(),
+            executor=self._executor,
         )
 
         elapsed_ms = (time.perf_counter() - start) * 1000
@@ -140,24 +153,41 @@ class Mem0Adapter(MemoryAdapter):
     async def reset(self, scenario_id: str) -> None:
         user_id = _user_id(scenario_id)
         try:
-            await asyncio.to_thread(self._memory.delete_all, user_id=user_id)
+            await self._run(self._memory.delete_all, user_id=user_id)
         except Exception:
             pass
-
-        # Recreate Memory object to avoid SQLite threading issues
-        if self._config:
-            self._memory = await asyncio.to_thread(_create_memory, self._config)
 
     async def teardown(self) -> None:
         self._memory = None
         self._config = None
-        if self._tmpdir:
-            self._tmpdir.cleanup()
-            self._tmpdir = None
+        self._executor.shutdown(wait=False)
+
+
+def _patch_qdrant_threading():
+    """Patch QdrantClient to disable SQLite check_same_thread.
+
+    mem0 internally spawns threads for memory processing, but Qdrant's
+    local persistence uses SQLite with check_same_thread=True by default.
+    mem0 doesn't pass force_disable_check_same_thread to QdrantClient,
+    so we patch QdrantClient.__init__ to inject it.
+    """
+    from qdrant_client import QdrantClient
+
+    if getattr(QdrantClient, "_samb_patched", False):
+        return
+    _original_init = QdrantClient.__init__
+
+    def _patched_init(self, *args, **kwargs):
+        kwargs.setdefault("force_disable_check_same_thread", True)
+        return _original_init(self, *args, **kwargs)
+
+    QdrantClient.__init__ = _patched_init
+    QdrantClient._samb_patched = True
 
 
 def _create_memory(config: dict):
     """Create a mem0 Memory instance (sync, runs in thread)."""
+    _patch_qdrant_threading()
     from mem0 import Memory
     return Memory.from_config(config)
 
@@ -229,11 +259,18 @@ _MAX_MEM0_ROUNDS = 6
 
 async def _agentic_mem0_retrieve(
     memory, user_id: str, query: str, k: int, api_key: str,
+    executor: ThreadPoolExecutor | None = None,
 ) -> tuple[str, int, list[str]]:
     """Agentic retrieval loop for mem0."""
     import openai
 
     client = openai.AsyncOpenAI(api_key=api_key)
+    loop = asyncio.get_running_loop()
+
+    async def _run(fn, *args, **kwargs):
+        return await loop.run_in_executor(
+            executor, partial(fn, *args, **kwargs)
+        )
 
     messages = [
         {"role": "system", "content": _MEM0_AGENT_PROMPT},
@@ -273,7 +310,7 @@ async def _agentic_mem0_retrieve(
             if fn_name == "search_memories":
                 search_query = args.get("query", query)
                 try:
-                    results = await asyncio.to_thread(
+                    results = await _run(
                         memory.search, search_query, user_id=user_id, limit=k,
                     )
                     mems = _extract_memories(results)
@@ -294,7 +331,7 @@ async def _agentic_mem0_retrieve(
 
             elif fn_name == "get_all_memories":
                 try:
-                    results = await asyncio.to_thread(
+                    results = await _run(
                         memory.get_all, user_id=user_id,
                     )
                     mems = _extract_memories(results)
