@@ -6,42 +6,24 @@
  * Writes a brief session summary to sessions/YYYY-MM-DD-{short_id}.md
  * if the workspace was used during this session. Updates the
  * plugin.last_active KV key for the SessionStart delta display.
+ *
+ * Supports cloud mode (MCP endpoint via fetch) and local mode (CLI).
  */
 
-import { execSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-
-function run(cmd) {
-  try {
-    return execSync(cmd, { stdio: "pipe", timeout: 10000, encoding: "utf-8" }).trim();
-  } catch {
-    return null;
-  }
-}
-
-function writeFile(path, content) {
-  try {
-    spawnSync("sayou", ["file", "write", path, "-"], {
-      input: content,
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 10000,
-    });
-  } catch {
-    // Silent failure
-  }
-}
-
-function getTodayActivity() {
-  const today = new Date().toISOString().slice(0, 10);
-  const raw = run(`sayou file read "activity/${today}.md"`);
-  if (!raw || raw.includes("not found") || raw.includes("does not exist")) {
-    return null;
-  }
-  return raw;
-}
+import {
+  isCloudMode,
+  workspaceRead,
+  workspaceWrite,
+  kvSet,
+  cliRun,
+  cliWrite,
+} from "./helpers.js";
 
 function extractStats(activityContent) {
-  const lines = activityContent.split("\n").filter((l) => /^- \d{2}:\d{2}/.test(l));
+  const lines = activityContent
+    .split("\n")
+    .filter((l) => /^- \d{2}:\d{2}/.test(l));
   if (lines.length === 0) return null;
 
   const types = { change: 0, command: 0, discovery: 0 };
@@ -55,27 +37,8 @@ function extractStats(activityContent) {
   return { total: lines.length, ...types };
 }
 
-function main() {
-  // Update last active
-  const now = new Date().toISOString();
-  run(`sayou kv set "plugin.last_active" '"${now}"'`);
-
-  // Check if there's activity from today
-  const activity = getTodayActivity();
-  if (!activity) {
-    // No workspace activity this session — skip summary
-    process.exit(0);
-  }
-
-  const stats = extractStats(activity);
-  if (!stats || stats.total === 0) {
-    process.exit(0);
-  }
-
-  // Generate session summary
-  const date = now.slice(0, 10);
-  const shortId = randomBytes(3).toString("hex");
-  const path = `sessions/${date}-${shortId}.md`;
+function buildSessionContent(stats, activity, now) {
+  const date = now.toISOString().slice(0, 10);
 
   const parts = [];
   if (stats.change > 0) parts.push(`${stats.change} changes`);
@@ -83,14 +46,13 @@ function main() {
   if (stats.discovery > 0) parts.push(`${stats.discovery} discoveries`);
   const statLine = parts.join(", ");
 
-  // Extract the last few activity entries for context
   const recentLines = activity
     .split("\n")
     .filter((l) => /^- \d{2}:\d{2}/.test(l))
     .slice(-10)
     .join("\n");
 
-  const content = [
+  return [
     "---",
     "type: session-summary",
     `date: ${date}`,
@@ -108,8 +70,95 @@ function main() {
     recentLines,
     "",
   ].join("\n");
+}
 
-  writeFile(path, content);
+// ── Cloud mode ──────────────────────────────────────────────
+
+async function cloudMain() {
+  const now = new Date();
+
+  // Update last active
+  try {
+    await kvSet("plugin.last_active", `"${now.toISOString()}"`);
+  } catch {}
+
+  // Check for today's activity
+  const today = now.toISOString().slice(0, 10);
+  let activity = null;
+  try {
+    activity = await workspaceRead(`activity/${today}.md`);
+  } catch {}
+
+  if (
+    !activity ||
+    (typeof activity === "string" &&
+      (activity.includes("not found") ||
+        activity.includes("does not exist") ||
+        activity.includes("File not found")))
+  ) {
+    process.exit(0);
+  }
+
+  const stats = extractStats(activity);
+  if (!stats || stats.total === 0) {
+    process.exit(0);
+  }
+
+  const shortId = randomBytes(3).toString("hex");
+  const path = `sessions/${today}-${shortId}.md`;
+  const content = buildSessionContent(stats, activity, now);
+
+  try {
+    await workspaceWrite(path, content);
+  } catch {}
+
+  process.exit(0);
+}
+
+// ── Local mode ──────────────────────────────────────────────
+
+function localMain() {
+  const now = new Date();
+
+  // Update last active
+  cliRun(`sayou kv set "plugin.last_active" '"${now.toISOString()}"'`);
+
+  // Check for today's activity
+  const today = now.toISOString().slice(0, 10);
+  const activity = cliRun(`sayou file read "activity/${today}.md"`);
+  if (
+    !activity ||
+    activity.includes("not found") ||
+    activity.includes("does not exist")
+  ) {
+    process.exit(0);
+  }
+
+  const stats = extractStats(activity);
+  if (!stats || stats.total === 0) {
+    process.exit(0);
+  }
+
+  const shortId = randomBytes(3).toString("hex");
+  const path = `sessions/${today}-${shortId}.md`;
+  const content = buildSessionContent(stats, activity, now);
+
+  cliWrite(path, content);
+  process.exit(0);
+}
+
+// ── Entry point ─────────────────────────────────────────────
+
+async function main() {
+  try {
+    if (isCloudMode()) {
+      await cloudMain();
+    } else {
+      localMain();
+    }
+  } catch {
+    // Never fail, never block
+  }
   process.exit(0);
 }
 
