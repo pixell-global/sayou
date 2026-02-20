@@ -4,29 +4,19 @@
  * session-start.js — SessionStart hook.
  *
  * Displays a workspace context summary at the start of each session.
- * Shows a file tree with frontmatter metadata and version counts,
- * plus a delta of changes since the last session.
+ * Supports cloud mode (MCP endpoint via fetch) and local mode (CLI).
  *
  * Output is capped at ~400 tokens to stay lightweight.
  */
 
-import { execSync } from "node:child_process";
-
-function run(cmd) {
-  try {
-    return execSync(cmd, { stdio: "pipe", timeout: 10000, encoding: "utf-8" }).trim();
-  } catch {
-    return null;
-  }
-}
-
-function parseFileList(json) {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
+import {
+  isCloudMode,
+  workspaceList,
+  workspaceRead,
+  kvGet,
+  kvSet,
+  cliRun,
+} from "./helpers.js";
 
 function relativeTime(dateStr) {
   const now = Date.now();
@@ -47,7 +37,7 @@ function relativeTime(dateStr) {
 function formatTree(files) {
   const MAX_FILES = 20;
   const lines = [];
-  const folders = new Map(); // folder -> [{name, meta, versions, updated}]
+  const folders = new Map();
 
   for (const f of files) {
     const parts = f.path.split("/").filter(Boolean);
@@ -80,8 +70,6 @@ function formatTree(files) {
       if (shown >= MAX_FILES) break;
 
       const metaParts = [];
-
-      // Show key frontmatter fields inline
       for (const key of ["status", "type", "topic", "priority"]) {
         if (entry.meta[key]) {
           metaParts.push(`${key}=${entry.meta[key]}`);
@@ -94,7 +82,9 @@ function formatTree(files) {
       const timeDisplay = timeStr ? `, ${timeStr}` : "";
 
       const prefix = folder ? "    " : "  ";
-      lines.push(`${prefix}${entry.name}${metaStr}     [${versionStr}${timeDisplay}]`);
+      lines.push(
+        `${prefix}${entry.name}${metaStr}     [${versionStr}${timeDisplay}]`
+      );
       shown++;
     }
   }
@@ -107,64 +97,93 @@ function formatTree(files) {
   return lines.join("\n");
 }
 
-function getActivitySummary() {
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-
-  let todayCount = 0;
-  let yesterdayCount = 0;
-
-  const todayLog = run(`sayou file read "activity/${today}.md" --json`);
-  if (todayLog) {
-    try {
-      const parsed = JSON.parse(todayLog);
-      const content = parsed.content || todayLog;
-      todayCount = (content.match(/^- \d/gm) || []).length;
-    } catch {
-      // count lines starting with "- " and a timestamp
-      todayCount = (todayLog.match(/^- \d/gm) || []).length;
-    }
-  }
-
-  const yesterdayLog = run(`sayou file read "activity/${yesterday}.md" --json`);
-  if (yesterdayLog) {
-    try {
-      const parsed = JSON.parse(yesterdayLog);
-      const content = parsed.content || yesterdayLog;
-      yesterdayCount = (content.match(/^- \d/gm) || []).length;
-    } catch {
-      yesterdayCount = (yesterdayLog.match(/^- \d/gm) || []).length;
-    }
-  }
-
-  if (todayCount === 0 && yesterdayCount === 0) return "";
-
-  const parts = [];
-  if (todayCount > 0) parts.push(`${todayCount} today`);
-  if (yesterdayCount > 0) parts.push(`${yesterdayCount} yesterday`);
-  return `recent activity: ${parts.join(", ")}`;
+function countActivityEntries(content) {
+  if (!content) return 0;
+  return (content.match(/^- \d{2}:\d{2}/gm) || []).length;
 }
 
-function getLastActive() {
-  const raw = run('sayou kv get "plugin.last_active"');
-  if (!raw) return null;
+function parseFileList(json) {
   try {
-    // KV returns JSON-encoded string
-    const val = JSON.parse(raw);
-    if (typeof val === "string") return val;
-    if (val && val.value) return typeof val.value === "string" ? val.value : JSON.parse(val.value);
+    return JSON.parse(json);
   } catch {
-    return raw.replace(/"/g, "");
+    return null;
   }
-  return null;
 }
 
-function main() {
-  // Get file listing
-  const rawList = run("sayou file list / --recursive --json");
+// ── Cloud mode ──────────────────────────────────────────────
+
+async function cloudMain() {
+  const output = [];
+
+  try {
+    const listing = await workspaceList("/", true);
+
+    if (!listing || (typeof listing === "string" && listing.includes("(0 files)"))) {
+      output.push("[sayou] workspace (cloud)");
+      output.push("");
+      output.push("Your workspace is empty. Start building knowledge:");
+      output.push('  "save a note about [topic]" — creates a versioned file');
+      output.push("  /save — quick-save key decisions from this session");
+      output.push("  /recall — search past knowledge");
+    } else {
+      // Get last active time
+      let lastActiveStr = "";
+      try {
+        const lastActive = await kvGet("plugin.last_active");
+        if (lastActive) {
+          // Parse JSON-encoded string or raw value
+          let val = lastActive;
+          try { val = JSON.parse(lastActive); } catch {}
+          if (typeof val === "string") {
+            lastActiveStr = `, last active ${relativeTime(val)}`;
+          }
+        }
+      } catch {}
+
+      output.push(`[sayou] workspace (cloud${lastActiveStr})`);
+      output.push("");
+      output.push(typeof listing === "string" ? listing : JSON.stringify(listing));
+
+      // Activity summary
+      const today = new Date().toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const parts = [];
+
+      try {
+        const todayLog = await workspaceRead(`activity/${today}.md`);
+        const todayCount = countActivityEntries(todayLog);
+        if (todayCount > 0) parts.push(`${todayCount} today`);
+      } catch {}
+
+      try {
+        const yesterdayLog = await workspaceRead(`activity/${yesterday}.md`);
+        const yesterdayCount = countActivityEntries(yesterdayLog);
+        if (yesterdayCount > 0) parts.push(`${yesterdayCount} yesterday`);
+      } catch {}
+
+      if (parts.length > 0) {
+        output.push("");
+        output.push(`  recent activity: ${parts.join(", ")}`);
+      }
+    }
+  } catch (e) {
+    output.push(`[sayou] workspace (cloud — error: ${e.message})`);
+  }
+
+  // Update last active
+  try {
+    await kvSet("plugin.last_active", `"${new Date().toISOString()}"`);
+  } catch {}
+
+  process.stdout.write(output.join("\n") + "\n");
+}
+
+// ── Local mode ──────────────────────────────────────────────
+
+function localMain() {
+  const rawList = cliRun("sayou file list / --recursive --json");
   const data = rawList ? parseFileList(rawList) : null;
 
-  // Determine files array from response
   let files = [];
   if (Array.isArray(data)) {
     files = data;
@@ -174,7 +193,6 @@ function main() {
     files = data.items;
   }
 
-  // Filter out activity logs and session files from the tree display
   const displayFiles = files.filter(
     (f) => !f.path.startsWith("activity/") && !f.path.startsWith("sessions/")
   );
@@ -182,7 +200,6 @@ function main() {
   const output = [];
 
   if (displayFiles.length === 0) {
-    // Empty workspace
     output.push("[sayou] workspace");
     output.push("");
     output.push("Your workspace is empty. Start building knowledge:");
@@ -192,30 +209,77 @@ function main() {
     output.push("");
     output.push("docs: github.com/pixell-global/sayou");
   } else {
-    // Populated workspace
-    const lastActive = getLastActive();
-    const lastActiveStr = lastActive ? `, last active ${relativeTime(lastActive)}` : "";
-    const activityStr = getActivitySummary();
+    let lastActiveStr = "";
+    const lastActiveRaw = cliRun('sayou kv get "plugin.last_active"');
+    if (lastActiveRaw) {
+      try {
+        let val = JSON.parse(lastActiveRaw);
+        if (typeof val === "object" && val.value) val = typeof val.value === "string" ? val.value : JSON.parse(val.value);
+        if (typeof val === "string") lastActiveStr = `, last active ${relativeTime(val)}`;
+      } catch {
+        const cleaned = lastActiveRaw.replace(/"/g, "");
+        if (cleaned) lastActiveStr = `, last active ${relativeTime(cleaned)}`;
+      }
+    }
 
     output.push(`[sayou] workspace (${files.length} files${lastActiveStr})`);
     output.push("");
     output.push(formatTree(displayFiles));
 
-    if (activityStr) {
+    // Activity summary
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const parts = [];
+
+    const todayLog = cliRun(`sayou file read "activity/${today}.md" --json`);
+    if (todayLog) {
+      try {
+        const parsed = JSON.parse(todayLog);
+        const content = parsed.content || todayLog;
+        const count = countActivityEntries(content);
+        if (count > 0) parts.push(`${count} today`);
+      } catch {
+        const count = countActivityEntries(todayLog);
+        if (count > 0) parts.push(`${count} today`);
+      }
+    }
+
+    const yesterdayLog = cliRun(`sayou file read "activity/${yesterday}.md" --json`);
+    if (yesterdayLog) {
+      try {
+        const parsed = JSON.parse(yesterdayLog);
+        const content = parsed.content || yesterdayLog;
+        const count = countActivityEntries(content);
+        if (count > 0) parts.push(`${count} yesterday`);
+      } catch {
+        const count = countActivityEntries(yesterdayLog);
+        if (count > 0) parts.push(`${count} yesterday`);
+      }
+    }
+
+    if (parts.length > 0) {
       output.push("");
-      output.push(`  ${activityStr}`);
+      output.push(`  recent activity: ${parts.join(", ")}`);
     }
   }
 
-  // Update last active timestamp
+  // Update last active
   try {
     const now = new Date().toISOString();
-    run(`sayou kv set "plugin.last_active" '"${now}"'`);
-  } catch {
-    // non-fatal
-  }
+    cliRun(`sayou kv set "plugin.last_active" '"${now}"'`);
+  } catch {}
 
   process.stdout.write(output.join("\n") + "\n");
+}
+
+// ── Entry point ─────────────────────────────────────────────
+
+async function main() {
+  if (isCloudMode()) {
+    await cloudMain();
+  } else {
+    localMain();
+  }
 }
 
 main();

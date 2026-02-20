@@ -2,7 +2,11 @@
   "mcpServers": {
     "sayou": {
       "type": "stdio",
-      "command": "sayou"
+      "command": "sh",
+      "args": [
+        "-c",
+        "KEY=\"${SAYOU_API_KEY:-}\"; [ -z \"$KEY\" ] && [ -f \"$HOME/.sayou/api-key\" ] && read -r KEY < \"$HOME/.sayou/api-key\"; if [ -n \"$KEY\" ]; then exec npx -y mcp-remote https://drive.sayou.dev/api/v1/mcp --header \"Authorization: Bearer $KEY\"; elif command -v sayou >/dev/null 2>&1; then exec sayou; else echo 'sayou: no API key or CLI found' >&2; exit 1; fi"
+      ]
     }
   }
 }

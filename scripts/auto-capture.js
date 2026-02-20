@@ -7,21 +7,19 @@
  * tool_output). Captures significant work into daily activity log files
  * in the workspace at activity/YYYY-MM-DD.md.
  *
- * Capture strategy:
- *   Write/Edit  → file path + purpose (change)
- *   Bash        → git commits, test results, deployments (command)
- *   Read        → config/architecture files only (discovery)
- *   WebFetch    → URL + key findings (discovery)
- *   WebSearch   → query + findings (discovery)
- *   Task        → subagent results (discovery)
- *   Glob/Grep   → skip (low-value exploration)
- *   AskUser     → skip (UX interaction)
+ * Supports cloud mode (MCP endpoint via fetch) and local mode (CLI).
  *
  * Always exits 0. Never blocks tool execution.
  */
 
-import { execSync, spawnSync } from "node:child_process";
 import { openSync, readSync, closeSync } from "node:fs";
+import {
+  isCloudMode,
+  workspaceRead,
+  workspaceWrite,
+  cliRun,
+  cliWrite,
+} from "./helpers.js";
 
 // Tools to skip entirely
 const SKIP_TOOLS = new Set([
@@ -49,7 +47,7 @@ const SKIP_BASH_PATTERNS = [
   /^\s*head\b/,
   /^\s*tail\b/,
   /^\s*wc\b/,
-  /^\s*sayou\b/,  // skip our own CLI calls to avoid recursion
+  /^\s*sayou\b/, // skip our own CLI calls to avoid recursion
 ];
 
 // Read paths worth capturing (config, architecture, important docs)
@@ -88,7 +86,8 @@ function classify(toolName, toolInput, toolOutput) {
   switch (toolName) {
     case "Write":
     case "NotebookEdit": {
-      const path = toolInput?.file_path || toolInput?.notebook_path || "unknown";
+      const path =
+        toolInput?.file_path || toolInput?.notebook_path || "unknown";
       const shortPath = path.replace(/^\/.*\//, "");
       return { type: "change", summary: `\`${shortPath}\` — created/wrote file` };
     }
@@ -103,24 +102,20 @@ function classify(toolName, toolInput, toolOutput) {
       const cmd = (toolInput?.command || "").trim();
       if (!cmd) return null;
 
-      // Skip low-value commands
       for (const pat of SKIP_BASH_PATTERNS) {
         if (pat.test(cmd)) return null;
       }
 
-      // Git commits are high-value
       if (/git commit/.test(cmd)) {
         const msgMatch = cmd.match(/-m\s+["']([^"']+)["']/);
         const msg = msgMatch ? msgMatch[1] : "commit";
         return { type: "command", summary: `git commit: "${msg}"` };
       }
 
-      // Git push
       if (/git push/.test(cmd)) {
         return { type: "command", summary: `git push` };
       }
 
-      // Test runs
       if (/pytest|npm test|jest|vitest|cargo test/.test(cmd)) {
         const passed = toolOutput && /passed|PASS/.test(toolOutput);
         const failed = toolOutput && /failed|FAIL|ERROR/.test(toolOutput);
@@ -128,17 +123,14 @@ function classify(toolName, toolInput, toolOutput) {
         return { type: "command", summary: `tests ${status}` };
       }
 
-      // Deployments
       if (/deploy|docker build|npm run build/.test(cmd)) {
         return { type: "command", summary: truncate(cmd, 80) };
       }
 
-      // Install commands
       if (/pip install|npm install|brew install/.test(cmd)) {
         return { type: "command", summary: truncate(cmd, 80) };
       }
 
-      // Generic meaningful bash (skip if too short/simple)
       if (cmd.length > 10) {
         return { type: "command", summary: truncate(cmd, 80) };
       }
@@ -162,7 +154,10 @@ function classify(toolName, toolInput, toolOutput) {
 
     case "WebSearch": {
       const query = toolInput?.query || "unknown query";
-      return { type: "discovery", summary: `searched "${truncate(query, 60)}"` };
+      return {
+        type: "discovery",
+        summary: `searched "${truncate(query, 60)}"`,
+      };
     }
 
     case "Task": {
@@ -171,9 +166,8 @@ function classify(toolName, toolInput, toolOutput) {
     }
 
     default: {
-      // MCP workspace tools — skip to avoid recursion with our own workspace
+      // MCP workspace tools — skip to avoid recursion
       if (toolName?.startsWith("mcp__sayou__")) return null;
-      // Unknown tool — capture if it has output
       if (toolOutput && String(toolOutput).length > 50) {
         return { type: "discovery", summary: `${toolName} tool used` };
       }
@@ -187,66 +181,77 @@ function truncate(str, max) {
   return str.slice(0, max - 3) + "...";
 }
 
-function writeActivityEntry(entry) {
+function buildActivityContent(existing, line, now) {
+  const date = now.toISOString().slice(0, 10);
+  const monthNames = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  const dateDisplay = `${monthNames[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+
+  if (
+    existing &&
+    !existing.includes("not found") &&
+    !existing.includes("does not exist") &&
+    !existing.includes("File not found") &&
+    !existing.includes("No matches")
+  ) {
+    const lines = existing.split("\n");
+    const entryCount =
+      lines.filter((l) => /^- \d{2}:\d{2}/.test(l)).length + 1;
+    const updated = existing.replace(/entries: \d+/, `entries: ${entryCount}`);
+    return updated + "\n" + line;
+  }
+
+  return [
+    "---",
+    "type: activity-log",
+    `date: ${date}`,
+    "entries: 1",
+    "---",
+    `# Activity — ${dateDisplay}`,
+    "",
+    line,
+  ].join("\n");
+}
+
+// ── Cloud mode ──────────────────────────────────────────────
+
+async function cloudWriteActivity(entry) {
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
   const time = now.toTimeString().slice(0, 5);
   const path = `activity/${date}.md`;
-
   const line = `- ${time} — [${entry.type}] ${entry.summary}`;
 
-  // Try to read existing file
   let existing = null;
   try {
-    existing = execSync(`sayou file read "${path}"`, {
-      stdio: "pipe",
-      timeout: 5000,
-      encoding: "utf-8",
-    }).trim();
+    existing = await workspaceRead(path);
   } catch {
-    // File doesn't exist yet
+    // file doesn't exist yet
   }
 
-  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const dateDisplay = `${monthNames[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
-
-  let content;
-  if (existing && !existing.includes("not found") && !existing.includes("does not exist")) {
-    // Append to existing — update entry count in frontmatter
-    const lines = existing.split("\n");
-    // Count existing entries
-    const entryCount = lines.filter((l) => /^- \d{2}:\d{2}/.test(l)).length + 1;
-
-    // Update entries count in frontmatter
-    const updated = existing.replace(/entries: \d+/, `entries: ${entryCount}`);
-    content = updated + "\n" + line;
-  } else {
-    // Create new file
-    content = [
-      "---",
-      "type: activity-log",
-      `date: ${date}`,
-      "entries: 1",
-      "---",
-      `# Activity — ${dateDisplay}`,
-      "",
-      line,
-    ].join("\n");
-  }
-
-  try {
-    // Use spawnSync with stdin for content to handle special characters
-    spawnSync("sayou", ["file", "write", path, "-"], {
-      input: content,
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
-    });
-  } catch {
-    // Silent failure — never block tool execution
-  }
+  const content = buildActivityContent(existing, line, now);
+  await workspaceWrite(path, content);
 }
 
-function main() {
+// ── Local mode ──────────────────────────────────────────────
+
+function localWriteActivity(entry) {
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const time = now.toTimeString().slice(0, 5);
+  const path = `activity/${date}.md`;
+  const line = `- ${time} — [${entry.type}] ${entry.summary}`;
+
+  const existing = cliRun(`sayou file read "${path}"`);
+  const content = buildActivityContent(existing, line, now);
+  cliWrite(path, content);
+}
+
+// ── Entry point ─────────────────────────────────────────────
+
+async function main() {
   try {
     const raw = readStdin();
     if (!raw) {
@@ -267,7 +272,11 @@ function main() {
     const entry = classify(toolName, toolInput, String(toolOutput).slice(0, 500));
 
     if (entry) {
-      writeActivityEntry(entry);
+      if (isCloudMode()) {
+        await cloudWriteActivity(entry);
+      } else {
+        localWriteActivity(entry);
+      }
     }
   } catch {
     // Never fail, never block

@@ -1,30 +1,24 @@
 #!/usr/bin/env node
 
 /**
- * ensure-sayou.js — Verify sayou CLI is available.
+ * ensure-sayou.js — Verify sayou connectivity (cloud or local).
  *
- * Runs before session-start.js. If sayou is missing, outputs install
- * instructions but always exits 0 (never blocks session start).
+ * Runs before session-start.js. Cloud-first: checks for API key,
+ * then falls back to local CLI. If neither is available, outputs
+ * setup instructions but always exits 0 (never blocks session start).
+ *
  * Sets a flag file at ~/.sayou/.plugin-ok on success so subsequent
  * hooks can skip re-checking.
  */
 
-import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
-
-const FLAG_DIR = join(homedir(), ".sayou");
-const FLAG_FILE = join(FLAG_DIR, ".plugin-ok");
-
-function sayouAvailable() {
-  try {
-    execSync("sayou status", { stdio: "pipe", timeout: 10000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { existsSync, writeFileSync } from "node:fs";
+import {
+  getApiKey,
+  isCLIAvailable,
+  ensureDir,
+  SAYOU_DIR,
+  FLAG_FILE,
+} from "./helpers.js";
 
 function main() {
   // Fast path: already verified this install
@@ -32,49 +26,35 @@ function main() {
     process.exit(0);
   }
 
-  if (sayouAvailable()) {
-    // Mark as verified
-    if (!existsSync(FLAG_DIR)) {
-      mkdirSync(FLAG_DIR, { recursive: true });
-    }
-    writeFileSync(FLAG_FILE, new Date().toISOString());
+  // Cloud mode: API key found
+  if (getApiKey()) {
+    ensureDir(SAYOU_DIR);
+    writeFileSync(FLAG_FILE, `cloud:${new Date().toISOString()}`);
     process.exit(0);
   }
 
-  // sayou not found — try auto-install
-  try {
-    execSync("pip install sayou", { stdio: "pipe", timeout: 60000 });
-  } catch {
-    // pip install failed — show manual instructions
-    const msg = [
-      "[sayou] not found on PATH",
-      "",
-      "Install:  pip install sayou",
-      "Then:     sayou init",
-      "",
-      "docs: github.com/pixell-global/sayou",
-    ].join("\n");
-    process.stdout.write(msg);
+  // Local mode: CLI available
+  if (isCLIAvailable()) {
+    ensureDir(SAYOU_DIR);
+    writeFileSync(FLAG_FILE, `local:${new Date().toISOString()}`);
     process.exit(0);
   }
 
-  // Verify install succeeded
-  if (sayouAvailable()) {
-    // Run init to create default workspace
-    try {
-      execSync("sayou init", { stdio: "pipe", timeout: 10000 });
-    } catch {
-      // init failure is non-fatal
-    }
-
-    if (!existsSync(FLAG_DIR)) {
-      mkdirSync(FLAG_DIR, { recursive: true });
-    }
-    writeFileSync(FLAG_FILE, new Date().toISOString());
-  } else {
-    process.stdout.write("[sayou] install succeeded but CLI not on PATH. Restart your shell.\n");
-  }
-
+  // Neither found — show setup instructions
+  const msg = [
+    "[sayou] Connect your workspace:",
+    "",
+    "  Cloud (recommended):",
+    "    1. Create an API key at https://drive.sayou.dev/settings",
+    '    2. echo "YOUR_KEY" > ~/.sayou/api-key',
+    "    3. Restart Claude Code",
+    "",
+    "  Local:",
+    "    pip install sayou && sayou init",
+    "",
+    "  docs: github.com/pixell-global/sayou",
+  ].join("\n");
+  process.stdout.write(msg + "\n");
   process.exit(0);
 }
 

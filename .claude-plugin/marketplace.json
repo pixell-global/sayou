@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "sayou",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "source": ".",
       "description": "Persistent knowledge workspace — structured files, versioning, semantic search across sessions"
     }
