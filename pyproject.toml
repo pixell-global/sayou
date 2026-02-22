@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sayou"
-version = "0.2.1"
+version = "0.2.2"
 description = "A file-system inspired context store for AI agents"
 readme = "README.md"
 license = "Apache-2.0"
