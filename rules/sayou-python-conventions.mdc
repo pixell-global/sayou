@@ -1,0 +1,46 @@
+---
+description: Python coding conventions for the sayou codebase (sayou/, agent/, benchmarks/)
+globs: ["sayou/**/*.py", "agent/**/*.py", "benchmarks/**/*.py"]
+alwaysApply: false
+---
+
+# Sayou Python conventions
+
+## Async
+
+- All I/O-bound code must use `async`/`await`. The codebase is async throughout (SQLAlchemy async, aiosqlite, FastMCP async handlers).
+- Never introduce synchronous database calls (`session.execute(...)` without `await`) in any hot path.
+- Use `asyncio.gather` for concurrent operations where appropriate.
+
+## Configuration and environment
+
+- All configuration is driven by `SAYOU_*` environment variables (e.g. `SAYOU_DB_URL`, `SAYOU_API_KEY`, `SAYOU_EMBEDDING_PROVIDER`).
+- Use Pydantic `BaseSettings` (via `pydantic-settings`) for config classes. Do not read `os.environ` directly in business logic.
+- Secrets and deployment-specific values must never be hardcoded; always reference the corresponding `SAYOU_*` env var.
+
+## Code style (Ruff)
+
+- Line length: **100** characters.
+- Target Python version: **3.11**.
+- Follow Ruff defaults for import ordering, unused imports, and style. Run `ruff check` and `ruff format` before committing.
+- Use `from __future__ import annotations` at the top of every module for deferred annotation evaluation.
+
+## Type annotations
+
+- All public functions and methods must have full type annotations (parameters and return type).
+- Use `collections.abc` types (`Sequence`, `Mapping`, `AsyncIterator`, …) rather than `typing` equivalents where possible (Python 3.11+).
+
+## Database access
+
+- Use SQLAlchemy 2 async session (`AsyncSession`). Always acquire sessions through the dependency-injected factory; do not create ad-hoc engine instances in application code.
+- Alembic migrations live in `alembic/versions/`. New schema changes must include a migration script.
+
+## Error handling
+
+- Raise domain-specific exceptions rather than bare `Exception`. Define custom exceptions in the relevant module.
+- MCP tool handlers must return structured error responses (not raise uncaught exceptions) so the MCP client receives a well-formed error.
+
+## Tests
+
+- All tests are async and use `pytest-asyncio` with `asyncio_mode = "auto"`.
+- Use `moto` for mocking AWS services (S3) and provide in-memory SQLite (`aiosqlite:///:memory:`) for DB tests.

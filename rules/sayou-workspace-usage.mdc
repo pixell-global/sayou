@@ -1,0 +1,56 @@
+---
+description: When and how to use the sayou workspace and its MCP tools for persistent knowledge across sessions
+alwaysApply: false
+---
+
+# Sayou workspace usage
+
+When helping a user who has sayou installed, prefer storing and retrieving information through the sayou workspace rather than relying on in-context memory alone.
+
+## When to suggest sayou
+
+- The user wants to save a decision, design note, research finding, or meeting outcome for later reference.
+- The user asks "what did we decide about…", "do we have notes on…", or any query that implies looking up past knowledge.
+- The user wants to share context across multiple AI sessions or agents.
+- The user is building or debugging something that benefits from versioned documentation.
+
+## Core MCP tools to use
+
+| Tool | Purpose |
+|------|---------|
+| `workspace_write` | Save or update a Markdown file with YAML frontmatter |
+| `workspace_read` | Read a specific file (including its version history) |
+| `workspace_list` | List files, optionally filtered by path prefix or frontmatter |
+| `workspace_search` | Search file paths and frontmatter fields |
+| `workspace_grep` | Full-text search inside file contents |
+| `workspace_glob` | Find files by glob pattern |
+| `workspace_delete` | Remove a file |
+| `workspace_history` | Show version history for a file |
+| `workspace_kv` | Get/set lightweight key-value pairs (config, flags, counters) |
+| `workspace_links` | List links between workspace files |
+| `workspace_chunks` | Retrieve chunked content for large files |
+| `workspace_semantic_search` | Meaning-based search (requires `SAYOU_EMBEDDING_PROVIDER`) |
+
+## File conventions
+
+- Use paths that reflect the content type, e.g. `decisions/`, `research/`, `notes/`, `activity/`.
+- Include YAML frontmatter with at minimum `type` and `status` fields so `workspace_search` can filter by them.
+- Example frontmatter:
+  ```yaml
+  ---
+  type: decision
+  status: approved
+  date: 2025-01-15
+  tags: [database, architecture]
+  ---
+  ```
+
+## Search strategy
+
+1. Try `workspace_search` first (searches paths and frontmatter — fast).
+2. If insufficient, use `workspace_grep` (searches file content).
+3. If still insufficient and embeddings are enabled, use `workspace_semantic_search`.
+
+## Skills available
+
+The `recall`, `save`, and `ws` skills provide higher-level guidance. Invoke them when the user's request maps directly to searching past knowledge (`recall`), persisting new knowledge (`save`), or general workspace management (`ws`).

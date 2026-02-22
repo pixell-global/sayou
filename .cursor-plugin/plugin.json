@@ -1,0 +1,14 @@
+{
+  "name": "sayou",
+  "version": "0.3.0",
+  "description": "Persistent knowledge workspace for AI agents — structured files, versioning, semantic search across sessions",
+  "author": {
+    "name": "Pixell",
+    "email": "kevin_yum@pixell.global"
+  },
+  "homepage": "https://github.com/pixell-global/sayou",
+  "repository": "https://github.com/pixell-global/sayou",
+  "license": "Apache-2.0",
+  "keywords": ["sayou", "mcp", "workspace", "knowledge", "agent", "versioning", "context"],
+  "hooks": "hooks/cursor-hooks.json"
+}
