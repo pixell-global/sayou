@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.pixell-global/sayou",
   "title": "sayou",
-  "description": "A file-system inspired context store for AI agents. Versioned files with YAML frontmatter, full-text search, and knowledge graph.",
+  "description": "Persistent knowledge workspace for AI agents. Versioned files, search, and MCP tools.",
   "repository": {
     "url": "https://github.com/pixell-global/sayou",
     "source": "github"
