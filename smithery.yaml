@@ -1,0 +1,31 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      databaseUrl:
+        type: string
+        description: "Database URL (SQLite or MySQL). Defaults to ~/.sayou/sayou.db"
+      workspace:
+        type: string
+        default: "default"
+        description: "Workspace slug"
+      orgId:
+        type: string
+        description: "Organization ID for multi-tenant setups"
+      userId:
+        type: string
+        description: "User ID for access control"
+  commandFunction: |-
+    (config) => ({
+      command: 'uvx',
+      args: ['sayou'],
+      env: Object.assign({},
+        config.databaseUrl ? { SAYOU_DATABASE_URL: config.databaseUrl } : {},
+        config.workspace ? { SAYOU_WORKSPACE: config.workspace } : {},
+        config.orgId ? { SAYOU_ORG_ID: config.orgId } : {},
+        config.userId ? { SAYOU_USER_ID: config.userId } : {}
+      )
+    })
