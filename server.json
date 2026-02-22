@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.pixell-global/sayou",
+  "title": "sayou",
+  "description": "A file-system inspired context store for AI agents. Versioned files with YAML frontmatter, full-text search, and knowledge graph.",
+  "repository": {
+    "url": "https://github.com/pixell-global/sayou",
+    "source": "github"
+  },
+  "version": "0.2.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "sayou",
+      "version": "0.2.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
