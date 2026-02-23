@@ -146,6 +146,13 @@ def main():
     # ── status ───────────────────────────────────────────────────
     subparsers.add_parser("status", help="Show sayou diagnostic status")
 
+    # ── auth ──────────────────────────────────────────────────────
+    auth_parser = subparsers.add_parser("auth", help="Manage Sayou Drive API key")
+    auth_sub = auth_parser.add_subparsers(dest="auth_command")
+    auth_sub.add_parser("login", help="Save API key (interactive)")
+    auth_sub.add_parser("logout", help="Remove saved API key")
+    auth_sub.add_parser("status", help="Show current auth status")
+
     # ── audit ────────────────────────────────────────────────────
     audit_parser = subparsers.add_parser("audit", help="Query audit log")
     audit_parser.add_argument("--path", default=None, help="Filter by file path")
@@ -187,6 +194,17 @@ def main():
     if args.command == "status":
         from sayou.cli.status import run_status
         asyncio.run(run_status())
+        return
+
+    if args.command == "auth":
+        from sayou.cli.auth import run_auth_login, run_auth_logout, run_auth_status
+        sub = getattr(args, "auth_command", None)
+        if sub == "logout":
+            asyncio.run(run_auth_logout())
+        elif sub == "status":
+            asyncio.run(run_auth_status())
+        else:  # bare "sayou auth" or "sayou auth login"
+            asyncio.run(run_auth_login())
         return
 
     # CLI commands

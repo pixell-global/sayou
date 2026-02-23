@@ -46,7 +46,7 @@ function main() {
     "",
     "  Cloud (recommended):",
     "    1. Create an API key at https://drive.sayou.dev/settings",
-    '    2. echo "YOUR_KEY" > ~/.sayou/api-key',
+    "    2. Run: sayou auth",
     "    3. Restart Claude Code",
     "",
     "  Local:",
