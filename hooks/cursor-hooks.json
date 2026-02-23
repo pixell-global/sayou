@@ -3,19 +3,19 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "node scripts/ensure-sayou.js && node scripts/session-start.js",
+        "command": "node ./scripts/ensure-sayou.js && node ./scripts/session-start.js",
         "timeout": 15
       }
     ],
     "sessionEnd": [
       {
-        "command": "node scripts/session-end.js",
+        "command": "node ./scripts/session-end.js",
         "timeout": 15
       }
     ],
     "postToolUse": [
       {
-        "command": "node scripts/auto-capture.js",
+        "command": "node ./scripts/auto-capture.js",
         "timeout": 10
       }
     ]
