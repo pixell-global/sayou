@@ -24,6 +24,8 @@ claude plugin install sayou@pixell-global
 
 One command. This installs the plugin with lifecycle hooks (workspace context on session start, passive activity capture, session summaries) and skills (`/ws`, `/save`, `/recall`). If `sayou` isn't installed yet, the plugin auto-installs it on first run.
 
+> **Cloud mode**: To sync your workspace via [Sayou Drive](https://drive.sayou.dev), run `sayou auth` after installing and paste your API key from [Settings](https://drive.sayou.dev/settings).
+
 ### pip install
 
 ```bash
@@ -181,6 +183,11 @@ sayou file search --query "hello" --filter status=active
 # KV store
 sayou kv set config.theme '"dark"'
 sayou kv get config.theme
+
+# Cloud authentication
+sayou auth            # Connect to Sayou Drive (interactive)
+sayou auth status     # Show current mode (cloud/local)
+sayou auth logout     # Disconnect from Sayou Drive
 
 # Diagnostics
 sayou init      # Initialize local setup
