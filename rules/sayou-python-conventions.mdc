@@ -14,7 +14,7 @@ alwaysApply: false
 
 ## Configuration and environment
 
-- All configuration is driven by `SAYOU_*` environment variables (e.g. `SAYOU_DB_URL`, `SAYOU_API_KEY`, `SAYOU_EMBEDDING_PROVIDER`).
+- All configuration is driven by `SAYOU_*` environment variables (e.g. `SAYOU_DATABASE_URL`, `SAYOU_API_KEY`, `SAYOU_EMBEDDING_PROVIDER`).
 - Use Pydantic `BaseSettings` (via `pydantic-settings`) for config classes. Do not read `os.environ` directly in business logic.
 - Secrets and deployment-specific values must never be hardcoded; always reference the corresponding `SAYOU_*` env var.
 
