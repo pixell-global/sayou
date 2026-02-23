@@ -1,7 +1,8 @@
 import base64
 import difflib
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timedelta, timezone
 
 from sayou.catalog.database import get_db
 from sayou.catalog.models import generate_uuid
@@ -1624,6 +1625,124 @@ class WorkspaceService:
                 for e in entries
             ]
             return {"items": items, "total": len(items)}
+
+    # ── Context ────────────────────────────────────────────────
+
+    async def get_context(
+        self,
+        org_id: str,
+        user_id: str,
+        workspace_slug: str,
+    ) -> dict:
+        """Assemble workspace context in one call for session start.
+
+        Returns preferences, recent files, activity summary, and file count.
+        Each sub-query is independent — one failure doesn't break the others.
+        """
+        preferences: list[dict] = []
+        recent_files: list[dict] = []
+        activity = {"today": 0, "yesterday": 0}
+        file_count = 0
+
+        _db = self._custom_get_db or get_db
+        async with _db() as session:
+            ws = await self._resolve_workspace(session, org_id, user_id, workspace_slug)
+            await self._check_role(session, ws.id, user_id, "reader")
+
+            # 1. Preferences — files under preferences/
+            try:
+                pref_files = await list_files_in_folder(
+                    session, org_id, ws.id, "preferences/"
+                )
+                for f in pref_files[:10]:
+                    try:
+                        versions = await get_file_versions(session, f.id, limit=1)
+                        if versions:
+                            content_bytes = await self.storage.download_version(
+                                versions[0].s3_key, versions[0].s3_bucket
+                            )
+                            content = content_bytes.decode("utf-8")
+                            fm = {}
+                            if f.frontmatter:
+                                try:
+                                    fm = json.loads(f.frontmatter)
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+                            preferences.append({
+                                "path": f.path,
+                                "content": content,
+                                "frontmatter": fm,
+                            })
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # 2. Recent files — all files, filtering out internal folders
+            try:
+                all_files = await list_all_files(session, org_id, ws.id)
+                file_count = len(all_files)
+                skip_prefixes = ("activity/", "sessions/", "preferences/")
+                filtered = [
+                    f for f in all_files
+                    if not any(f.path.startswith(p) for p in skip_prefixes)
+                ]
+                # Sort by updated_at descending, take most recent 20
+                filtered.sort(
+                    key=lambda f: f.updated_at or datetime.min,
+                    reverse=True,
+                )
+                for f in filtered[:20]:
+                    fm = {}
+                    if f.frontmatter:
+                        try:
+                            fm = json.loads(f.frontmatter)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    recent_files.append({
+                        "path": f.path,
+                        "frontmatter": fm,
+                        "version": f.version_count,
+                        "updated_at": f.updated_at.isoformat() if f.updated_at else None,
+                    })
+            except Exception:
+                pass
+
+            # 3. Activity summary — count entry lines in today/yesterday logs
+            try:
+                now = datetime.now(timezone.utc)
+                today_str = now.strftime("%Y-%m-%d")
+                yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+                for date_str, key in [
+                    (today_str, "today"),
+                    (yesterday_str, "yesterday"),
+                ]:
+                    try:
+                        activity_path = f"activity/{date_str}.md"
+                        af = await get_file_by_path(
+                            session, org_id, ws.id, activity_path
+                        )
+                        if af:
+                            versions = await get_file_versions(session, af.id, limit=1)
+                            if versions:
+                                content_bytes = await self.storage.download_version(
+                                    versions[0].s3_key, versions[0].s3_bucket
+                                )
+                                content = content_bytes.decode("utf-8")
+                                count = len(re.findall(r"^- \d{2}:\d{2}", content, re.MULTILINE))
+                                activity[key] = count
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        return {
+            "preferences": preferences,
+            "recent_files": recent_files,
+            "activity": activity,
+            "file_count": file_count,
+        }
 
     # ── Context-aware Read ──────────────────────────────────────────
 
