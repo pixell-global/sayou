@@ -10,5 +10,6 @@
   "repository": "https://github.com/pixell-global/sayou",
   "license": "Apache-2.0",
   "keywords": ["sayou", "mcp", "workspace", "knowledge", "agent", "versioning", "context"],
-  "hooks": "hooks/cursor-hooks.json"
+  "hooks": "hooks/cursor-hooks.json",
+  "rules": ["rules/sayou-python-conventions.mdc", "rules/sayou-workspace-usage.mdc"]
 }
