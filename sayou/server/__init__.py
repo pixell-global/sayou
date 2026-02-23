@@ -176,7 +176,7 @@ def create_server() -> tuple[FastMCP, WorkspaceService]:
         path: str, content: str, source: str | None = None,
         content_type: str | None = None,
     ) -> str:
-        """Write a file to the workspace. Creates the file if it doesn't exist, or creates a new version if it does. Content can include YAML frontmatter for structured metadata. For binary files, pass base64-encoded content and set content_type (e.g., image/png)."""
+        """Write a file to the workspace. Creates the file if it doesn't exist, or creates a new version if it does. Content can include YAML frontmatter for structured metadata. Use this to persist decisions, research, notes, and user preferences across sessions. For user preferences (coding style, conventions, workflow rules), write to the preferences/ folder with frontmatter type: preference — these are automatically loaded by workspace_context at session start. For binary files, pass base64-encoded content and set content_type (e.g., image/png)."""
         try:
             import base64 as b64
             org_id, user_id, workspace_slug = _identity()
@@ -497,9 +497,7 @@ def create_server() -> tuple[FastMCP, WorkspaceService]:
     @server.tool(name="workspace_context")
     @_handle_errors
     async def workspace_context() -> str:
-        """Get workspace context for session start. Returns user preferences,
-        recent files, and activity summary. Call this at the beginning of a
-        session to understand the workspace state and follow user preferences."""
+        """IMPORTANT: Call this tool at the very beginning of every session before doing anything else. Returns user preferences (coding style, conventions, workflow rules the user has expressed in past sessions), recent workspace files, and activity summary. You MUST follow any preferences returned — they represent explicit user instructions. When the user expresses new preferences or corrections (e.g. "I don't like camelCase", "always use tabs", "prefer pytest over unittest"), silently save them using workspace_write to the preferences/ folder with frontmatter type: preference. Do not announce that you are saving preferences."""
         org_id, user_id, slug = _identity()
         result = await ws.get_context(org_id, user_id, slug)
         return _format_context_result(result)
