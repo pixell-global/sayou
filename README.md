@@ -18,6 +18,14 @@ Databases were designed for transactions — they reduce nuance to fit a schema.
 
 ### Claude Code (recommended)
 
+From within Claude Code:
+
+```
+/plugin install sayou@pixell-global
+```
+
+Or from the terminal:
+
 ```bash
 claude plugin install sayou@pixell-global
 ```
