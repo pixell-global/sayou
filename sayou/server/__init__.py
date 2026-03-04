@@ -122,6 +122,18 @@ def create_server() -> tuple[FastMCP, WorkspaceService]:
             import base64 as b64
             org_id, user_id, workspace_slug = _identity()
 
+            # NEVER allow MCP to write to synced source folders.
+            # Synced content (Slack, Google Drive, Notion) is managed by the
+            # connector sync pipeline, NOT via MCP workspace_write.
+            _synced_prefixes = ("/slack/", "/gdrive/", "/gdrive-org/", "/notion/")
+            normalized = path if path.startswith("/") else f"/{path}"
+            if any(normalized.startswith(p) for p in _synced_prefixes):
+                return (
+                    f"Cannot write to synced folder '{normalized.split('/')[1]}/'. "
+                    "This content is managed by the connector sync pipeline. "
+                    "Edit in the source app instead."
+                )
+
             # If content_type indicates binary, decode from base64
             write_content: str | bytes = content
             if content_type and not content_type.startswith("text/") and content_type not in (
