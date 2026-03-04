@@ -51,12 +51,10 @@ async def ensure_default_workspace(
     ws = await get_workspace_by_slug(session, org_id, "default")
     if ws is None:
         ws = await create_workspace(session, org_id, "default", "Default Workspace", user_id)
-        await add_member(session, ws.id, user_id, "admin")
+        await ensure_member(session, ws.id, user_id, "admin")
     else:
         # Ensure the current user has access
-        member = await get_membership(session, ws.id, user_id)
-        if member is None:
-            await add_member(session, ws.id, user_id, "admin")
+        await ensure_member(session, ws.id, user_id, "admin")
     return ws
 
 
@@ -86,6 +84,25 @@ async def add_member(
     session.add(member)
     await session.flush()
     return member
+
+
+async def ensure_member(
+    session: AsyncSession, workspace_id: str, user_id: str, role: str = "admin"
+) -> SayouWorkspaceMember:
+    """Add a member if not already present. Handles concurrent race conditions."""
+    existing = await get_membership(session, workspace_id, user_id)
+    if existing is not None:
+        return existing
+    try:
+        return await add_member(session, workspace_id, user_id, role)
+    except Exception:
+        # Duplicate key from concurrent insert — roll back the failed flush
+        # and return the existing row.
+        await session.rollback()
+        existing = await get_membership(session, workspace_id, user_id)
+        if existing is not None:
+            return existing
+        raise
 
 
 async def check_permission(
@@ -765,7 +782,18 @@ async def upsert_index_cache(
         file_count=file_count,
     )
     session.add(cache)
-    await session.flush()
+    try:
+        await session.flush()
+    except Exception:
+        # Duplicate key from concurrent upsert — update the existing row instead.
+        await session.rollback()
+        existing = await get_index_cache(session, org_id, workspace_id, folder_path)
+        if existing:
+            existing.content = content
+            existing.file_count = file_count
+            await session.flush()
+            return existing
+        raise
     return cache
 
 
