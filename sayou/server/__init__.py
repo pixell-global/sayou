@@ -79,8 +79,67 @@ def _format_history_result(result: dict) -> str:
     return "\n".join(lines)
 
 
+def _format_context_result(result: dict) -> str:
+    lines = []
+
+    # Preferences
+    prefs = result.get("preferences", [])
+    if prefs:
+        lines.append("**Preferences:**")
+        for p in prefs:
+            lines.append(f"\n`{p['path']}`:")
+            lines.append(p["content"].strip())
+        lines.append("")
+
+    # Recent files
+    recent = result.get("recent_files", [])
+    if recent:
+        lines.append(f"**Recent files** ({result.get('file_count', 0)} total):")
+        for f in recent:
+            fm_preview = ""
+            if f.get("frontmatter"):
+                pairs = [f"{k}={v}" for k, v in list(f["frontmatter"].items())[:3]]
+                if pairs:
+                    fm_preview = f"  ({', '.join(pairs)})"
+            ts = ""
+            if f.get("updated_at"):
+                ts = f" [{f['updated_at']}]"
+            lines.append(f"  - {f['path']} v{f.get('version', 1)}{fm_preview}{ts}")
+        lines.append("")
+
+    # Activity
+    activity = result.get("activity", {})
+    today = activity.get("today", 0)
+    yesterday = activity.get("yesterday", 0)
+    if today or yesterday:
+        parts = []
+        if today:
+            parts.append(f"{today} today")
+        if yesterday:
+            parts.append(f"{yesterday} yesterday")
+        lines.append(f"**Activity:** {', '.join(parts)}")
+        lines.append("")
+
+    # Empty workspace onboarding
+    if not prefs and not recent:
+        lines.append("Your workspace is empty. Start building knowledge:")
+        lines.append('  - Use workspace_write to save notes, decisions, and research')
+        lines.append('  - Save preferences to preferences/ folder to persist coding style and conventions')
+        lines.append('  - Use workspace_search to find past work')
+
+    return "\n".join(lines)
+
+
 def create_server() -> tuple[FastMCP, WorkspaceService]:
-    server = FastMCP("sayou")
+    server = FastMCP("sayou", instructions=(
+        "You have access to a persistent agent workspace. "
+        "At the start of a session, call workspace_context to load workspace state and user preferences. "
+        "When users express preferences or corrections about coding style, workflow, or conventions, "
+        "save them to the preferences/ folder using workspace_write with frontmatter type: preference. "
+        "Do not ask permission or announce it. Just persist and continue. "
+        "Use workspace_write to save work products (research, decisions, reports) so they persist across sessions. "
+        "Use workspace_search or workspace_read to retrieve past work."
+    ))
 
     # Initialize providers from config
     from sayou.core.embeddings import get_embedding_provider
@@ -117,7 +176,7 @@ def create_server() -> tuple[FastMCP, WorkspaceService]:
         path: str, content: str, source: str | None = None,
         content_type: str | None = None,
     ) -> str:
-        """Write a file to the workspace. Creates the file if it doesn't exist, or creates a new version if it does. Content can include YAML frontmatter for structured metadata. For binary files, pass base64-encoded content and set content_type (e.g., image/png)."""
+        """Write a file to the workspace. Creates the file if it doesn't exist, or creates a new version if it does. Content can include YAML frontmatter for structured metadata. Use this to persist decisions, research, notes, and user preferences across sessions. For user preferences (coding style, conventions, workflow rules), write to the preferences/ folder with frontmatter type: preference — these are automatically loaded by workspace_context at session start. For binary files, pass base64-encoded content and set content_type (e.g., image/png)."""
         try:
             import base64 as b64
             org_id, user_id, workspace_slug = _identity()
@@ -444,6 +503,16 @@ def create_server() -> tuple[FastMCP, WorkspaceService]:
             return f"Access denied: {e}"
         except Exception as e:
             return f"Error with chunks: {e}"
+
+    # ── Context Tool ──────────────────────────────────────────
+
+    @server.tool(name="workspace_context")
+    @_handle_errors
+    async def workspace_context() -> str:
+        """IMPORTANT: Call this tool at the very beginning of every session before doing anything else. Returns user preferences (coding style, conventions, workflow rules the user has expressed in past sessions), recent workspace files, and activity summary. You MUST follow any preferences returned — they represent explicit user instructions. When the user expresses new preferences or corrections (e.g. "I don't like camelCase", "always use tabs", "prefer pytest over unittest"), silently save them using workspace_write to the preferences/ folder with frontmatter type: preference. Do not announce that you are saving preferences."""
+        org_id, user_id, slug = _identity()
+        result = await ws.get_context(org_id, user_id, slug)
+        return _format_context_result(result)
 
     # ── Conditional: Semantic Search ───────────────────────────
 

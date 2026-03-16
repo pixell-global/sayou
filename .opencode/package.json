@@ -1,0 +1,7 @@
+{
+  "name": "sayou-opencode-plugin",
+  "private": true,
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.0.0"
+  }
+}

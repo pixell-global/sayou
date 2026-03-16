@@ -281,6 +281,15 @@ class Workspace:
             self._org_id, self._user_id, self._slug, path, line_start, line_end,
         )
 
+    # ── Context ────────────────────────────────────────────────────
+
+    async def get_context(self) -> dict:
+        """Get workspace context for session start: preferences, recent files, activity."""
+        await self._ensure_open()
+        return await self._service.get_context(
+            self._org_id, self._user_id, self._slug,
+        )
+
     # ── Schema & Auto-Metadata ────────────────────────────────────
 
     async def schema(self) -> dict:

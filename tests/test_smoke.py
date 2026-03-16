@@ -240,7 +240,7 @@ async def test_smoke_full_cycle(smoke_env):
 
 @pytest.mark.asyncio
 async def test_smoke_mcp_tools():
-    """create_server() exposes 11 core tools (12 with embeddings) with correct schemas."""
+    """create_server() exposes 12 core tools (13 with embeddings) with correct schemas."""
     from sayou.server import create_server
 
     server, ws = create_server()
@@ -259,6 +259,7 @@ async def test_smoke_mcp_tools():
         "workspace_kv",
         "workspace_links",
         "workspace_chunks",
+        "workspace_context",
     }
     # workspace_semantic_search only registered when SAYOU_EMBEDDING_PROVIDER is set
     assert expected.issubset(tool_names), f"Missing tools: {expected - tool_names}"
@@ -315,3 +316,8 @@ async def test_smoke_mcp_tools():
     chunks_schema = tool_map["workspace_chunks"].inputSchema
     assert "path" in chunks_schema["properties"]
     assert "chunk_index" in chunks_schema["properties"]
+
+    # workspace_context has no required parameters
+    context_schema = tool_map["workspace_context"].inputSchema
+    required = context_schema.get("required", [])
+    assert len(required) == 0, f"workspace_context should have no required params, got: {required}"

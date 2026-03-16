@@ -1,0 +1,15 @@
+{
+  "mcp": {
+    "sayou": {
+      "type": "local",
+      "command": ["sayou"],
+      "enabled": true,
+      "environment": {
+        "SAYOU_ORG_ID": "{env:SAYOU_ORG_ID}",
+        "SAYOU_USER_ID": "{env:SAYOU_USER_ID}"
+      }
+    }
+  },
+  "plugin": [".opencode/plugins/sayou.ts"],
+  "instructions": ["AGENTS.md"]
+}

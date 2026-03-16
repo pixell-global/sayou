@@ -11,6 +11,7 @@
 
 import {
   isCloudMode,
+  mcpCall,
   workspaceList,
   workspaceRead,
   kvGet,
@@ -113,6 +114,24 @@ function parseFileList(json) {
 // ── Cloud mode ──────────────────────────────────────────────
 
 async function cloudMain() {
+  try {
+    const context = await mcpCall("workspace_context", {});
+    if (context) {
+      process.stdout.write(`[sayou] workspace (cloud)\n\n${context}\n`);
+    } else {
+      process.stdout.write("[sayou] workspace (cloud)\n\n");
+      process.stdout.write("Your workspace is empty. Start building knowledge:\n");
+      process.stdout.write('  "save a note about [topic]"\n');
+    }
+  } catch {
+    // Fall back to legacy manual assembly if workspace_context not available
+    await cloudMainLegacy();
+  }
+  // Update last active
+  try { await kvSet("plugin.last_active", `"${new Date().toISOString()}"`); } catch {}
+}
+
+async function cloudMainLegacy() {
   const output = [];
 
   try {
@@ -131,7 +150,6 @@ async function cloudMain() {
       try {
         const lastActive = await kvGet("plugin.last_active");
         if (lastActive) {
-          // Parse JSON-encoded string or raw value
           let val = lastActive;
           try { val = JSON.parse(lastActive); } catch {}
           if (typeof val === "string") {
@@ -169,11 +187,6 @@ async function cloudMain() {
   } catch (e) {
     output.push(`[sayou] workspace (cloud — error: ${e.message})`);
   }
-
-  // Update last active
-  try {
-    await kvSet("plugin.last_active", `"${new Date().toISOString()}"`);
-  } catch {}
 
   process.stdout.write(output.join("\n") + "\n");
 }
