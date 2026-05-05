@@ -57,6 +57,17 @@ ruff check .
 - Tests requiring `SAYOU_EMBEDDING_PROVIDER` are skipped when not configured.
 - All PRs must pass tests before merge.
 
+## Pixell Cortex
+
+Sayou is the knowledge storage backend for Pixell Cortex (company brain for K-beauty brands). See [docs/PIXELL_CORTEX_PLAN.md](./docs/PIXELL_CORTEX_PLAN.md) for the full plan.
+
+**No MCP in Pixell Cortex.** Hermes accesses Sayou via CLI scripts (`brain read|write|search|list|grep`) through its terminal toolset, not via MCP. MCP tool schemas are injected into every LLM API call and waste tokens on every turn. Skills + CLI give the same capabilities at a fraction of the cost. Do not propose MCP-based integrations for Cortex.
+
+## Infrastructure Credentials
+
+- **Vultr API key** is stored in `.env` (gitignored). Use `VULTR_API_KEY` to provision/manage Pixell Cortex VPS instances via the Vultr API.
+- Never commit API keys or secrets to the repo. All secrets go in `.env`.
+
 ## Release Process
 
 1. Bump version in `pyproject.toml`
